@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Zombie Multiplayer - Fixed</title>
+    <style>
+        body { margin: 0; background: #111; overflow: hidden; font-family: sans-serif; }
+        canvas { display: block; margin: auto; background: #222; border: 2px solid #444; }
+    </style>
+</head>
+<body>
+<canvas id="game" width="800" height="600" tabindex="1"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.focus();
+
+const ws = new WebSocket(location.protocol === 'https:' ? `wss://${location.host}` : `ws://${location.host}`);
+
+let playerId = null;
+let gameState = { players: {}, zombies: [], bullets: [] };
+let walls = []; // Received from server
+
+ws.onmessage = (msg) => {
+    const data = JSON.parse(msg.data);
+    if (data.type === 'init') {
+        playerId = data.playerId;
+        walls = data.walls;
+    }
+    if (data.type === 'state') {
+        // 1. Sync Zombies and Bullets normally
+        gameState.zombies = data.zombies;
+        gameState.bullets = data.bullets;
+
+        // 2. Sync OTHER players
+        for (let id in data.players) {
+            if (id != playerId) {
+                gameState.players[id] = data.players[id];
+            } else {
+                // 3. For the LOCAL player, don't just overwrite!
+                // Only sync score/health, keep our predicted X/Y
+                const serverSelf = data.players[id];
+                if (!gameState.players[id]) {
+                    gameState.players[id] = serverSelf;
+                } else {
+                    gameState.players[id].health = serverSelf.health;
+                    gameState.players[id].score = serverSelf.score;
+                    gameState.players[id].alive = serverSelf.alive;
+                    
+                    // Optional: If the server and client are TOO far apart (e.g., > 50px),
+                    // then the server wins (anti-cheat/major lag fix).
+                    const dist = Math.sqrt((gameState.players[id].x - serverSelf.x)**2 + (gameState.players[id].y - serverSelf.y)**2);
+                    if (dist > 60) {
+                        gameState.players[id].x = serverSelf.x;
+                        gameState.players[id].y = serverSelf.y;
+                    }
+                }
+            }
+        }
+    }
+};
+
+const keys = {};
+window.addEventListener('keydown', (e) => keys[e.code] = true);
+window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+// Wall collision for client-side prediction
+function checkWallCollision(x, y, size) {
+    return walls.some(w => x < w.x + w.w && x + size > w.x && y < w.y + w.h && y + size > w.y);
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const me = gameState.players[playerId];
+    if (!me || !me.alive) return;
+
+    let dx = (e.clientX - rect.left) - (me.x + 10);
+    let dy = (e.clientY - rect.top) - (me.y + 10);
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    
+    ws.send(JSON.stringify({ type: 'shoot', x: me.x + 10, y: me.y + 10, dx: dx/dist, dy: dy/dist }));
+});
+
+function movePlayer() {
+    const me = gameState.players[playerId];
+    if (!me || !me.alive) return;
+
+    let dx = 0, dy = 0;
+    const speed = 3;
+
+    if (keys['KeyW']) dy -= speed;
+    if (keys['KeyS']) dy += speed;
+    if (keys['KeyA']) dx -= speed;
+    if (keys['KeyD']) dx += speed;
+
+    if (dx !== 0 || dy !== 0) {
+        // --- CLIENT SIDE PREDICTION ---
+        // Move locally immediately so it feels fast
+        if (!checkWallCollision(me.x + dx, me.y, 20)) me.x += dx;
+        if (!checkWallCollision(me.x, me.y + dy, 20)) me.y += dy;
+
+        // Tell server what we did
+        ws.send(JSON.stringify({ type: 'move', dx, dy }));
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, 800, 600);
+    
+    // Draw Walls
+    ctx.fillStyle = '#555';
+    walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+
+    // Draw Zombies
+    gameState.zombies.forEach(z => {
+        ctx.fillStyle = '#ff4444';
+        ctx.fillRect(z.x, z.y, 20, 20);
+    });
+
+    // Draw Bullets
+    ctx.fillStyle = '#ffff00';
+    gameState.bullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 4));
+
+    // Draw Players
+    Object.values(gameState.players).forEach(p => {
+        if (!p.alive) return;
+        ctx.fillStyle = p.id === playerId ? '#4444ff' : '#44ff44';
+        ctx.fillRect(p.x, p.y, 20, 20);
+        
+        // Health bar
+        ctx.fillStyle = 'red';
+        ctx.fillRect(p.x, p.y - 10, 20, 4);
+        ctx.fillStyle = 'lime';
+        ctx.fillRect(p.x, p.y - 10, (p.health / 100) * 20, 4);
+    });
+
+    // UI
+    const me = gameState.players[playerId];
+    if (me) {
+        ctx.fillStyle = 'white';
+        ctx.fillText(`Score: ${me.score}`, 10, 20);
+        if (!me.alive) {
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0,0,800,600);
+            ctx.fillStyle = 'white';
+            ctx.font = '30px Arial';
+            ctx.fillText("YOU DIED - RESPAWNING...", 220, 300);
+        }
+    }
+    requestAnimationFrame(draw);
+}
+
+// Logic loop for input (separate from draw for consistency)
+setInterval(movePlayer, 1000/60); 
+draw();
+</script>
+</body>
+</html>
