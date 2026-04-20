@@ -8,14 +8,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const server = http.createServer((req, res) => {
-    // Basic routing for the index.html
     const filePath = path.join(__dirname, 'client', 'index.html');
     fs.readFile(filePath, (err, content) => {
-        if (err) {
-            res.writeHead(500);
-            res.end('Error loading index.html');
-            return;
-        }
+        if (err) { res.writeHead(500); res.end('Error loading index.html'); return; }
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(content);
     });
@@ -24,11 +19,12 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 
 // ============================
-// GAME DATA & OBSTACLES
+// CONSTANTS
 // ============================
-let players = {};
-let zombies = [];
-let bullets = [];
+const MAX_PLAYERS_PER_ROOM = 4;
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
+
 const walls = [
     { x: 150, y: 150, w: 100, h: 20 },
     { x: 400, y: 100, w: 20, h: 150 },
@@ -36,10 +32,57 @@ const walls = [
     { x: 200, y: 400, w: 20, h: 100 }
 ];
 
+const SPAWN_POINTS = [
+    { x: 50, y: 50 },
+    { x: 730, y: 50 },
+    { x: 50, y: 530 },
+    { x: 730, y: 530 }
+];
+
+// ============================
+// ROOM MANAGEMENT
+// ============================
+let rooms = {};       // roomId -> room object
+let playerRoom = {};  // playerId -> roomId
+let playerWs = {};    // playerId -> ws
+
+let roomIdCounter = 1;
 let playerIdCounter = 1;
 let bulletIdCounter = 1;
 
-// Collision Helper
+function createRoom() {
+    const roomId = roomIdCounter++;
+    rooms[roomId] = {
+        id: roomId,
+        state: 'lobby',   // 'lobby' | 'playing'
+        players: {},
+        zombies: [],
+        bullets: [],
+        zombieSpawnInterval: null,
+        gameLoopInterval: null
+    };
+    console.log(`Room ${roomId} created`);
+    return rooms[roomId];
+}
+
+function findAvailableRoom() {
+    // Find a lobby room with space
+    for (const room of Object.values(rooms)) {
+        if (room.state === 'lobby' && Object.keys(room.players).length < MAX_PLAYERS_PER_ROOM) {
+            return room;
+        }
+    }
+    // No available room — create one
+    return createRoom();
+}
+
+function getRoomPlayerCount(room) {
+    return Object.keys(room.players).length;
+}
+
+// ============================
+// COLLISION HELPERS
+// ============================
 function isColliding(rect1, rect2) {
     return rect1.x < rect2.x + rect2.w &&
            rect1.x + rect1.w > rect2.x &&
@@ -52,62 +95,215 @@ function checkWallCollision(x, y, size) {
 }
 
 // ============================
-// GAME LOOP (Lowered to 30ms for smoother sync)
+// GAME LOOP PER ROOM
 // ============================
-setInterval(() => {
-    updateZombies();
-    updateBullets();
-    checkCollisions();
-    broadcastGameState();
-}, 30);
+function startGameLoop(room) {
+    if (room.gameLoopInterval) clearInterval(room.gameLoopInterval);
+    if (room.zombieSpawnInterval) clearInterval(room.zombieSpawnInterval);
+
+    room.gameLoopInterval = setInterval(() => {
+        if (Object.keys(room.players).length === 0) return;
+        updateZombies(room);
+        updateBullets(room);
+        checkCollisions(room);
+        broadcastRoomState(room);
+    }, 30);
+
+    room.zombieSpawnInterval = setInterval(() => {
+        if (Object.keys(room.players).length > 0) {
+            spawnZombie(room);
+        } else {
+            room.zombies = [];
+        }
+    }, 3000);
+}
+
+function stopGameLoop(room) {
+    if (room.gameLoopInterval) { clearInterval(room.gameLoopInterval); room.gameLoopInterval = null; }
+    if (room.zombieSpawnInterval) { clearInterval(room.zombieSpawnInterval); room.zombieSpawnInterval = null; }
+}
 
 // ============================
-// SPAWN ZOMBIES (ONLY IF PLAYERS EXIST)
+// GAME LOGIC
 // ============================
-setInterval(() => {
-  // Object.keys(players).length checks if the players object is empty
-  if (Object.keys(players).length > 0) {
-    spawnZombie();
-  } else {
-    // If no one is online, clear the zombies so the next player 
-    // doesn't walk into a room with 5,000 zombies.
-    zombies = []; 
-  }
-}, 3000);
+function spawnZombie(room) {
+    const edges = [
+        { x: Math.random() * GAME_WIDTH, y: 0 },
+        { x: Math.random() * GAME_WIDTH, y: GAME_HEIGHT - 20 },
+        { x: 0, y: Math.random() * GAME_HEIGHT },
+        { x: GAME_WIDTH - 20, y: Math.random() * GAME_HEIGHT },
+    ];
+    const pos = edges[Math.floor(Math.random() * edges.length)];
+    room.zombies.push({ x: pos.x, y: pos.y, speed: 1.2, health: 2 });
+}
 
+function updateZombies(room) {
+    const alivePlayers = Object.values(room.players).filter(p => p.alive);
+    if (alivePlayers.length === 0) return;
+
+    room.zombies.forEach(z => {
+        // Target nearest player
+        let nearest = alivePlayers[0];
+        let nearestDist = Infinity;
+        alivePlayers.forEach(p => {
+            const d = Math.hypot(p.x - z.x, p.y - z.y);
+            if (d < nearestDist) { nearestDist = d; nearest = p; }
+        });
+
+        const dx = nearest.x - z.x;
+        const dy = nearest.y - z.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 0) {
+            const moveX = (dx / dist) * z.speed;
+            const moveY = (dy / dist) * z.speed;
+            if (!checkWallCollision(z.x + moveX, z.y, 20)) z.x += moveX;
+            if (!checkWallCollision(z.x, z.y + moveY, 20)) z.y += moveY;
+        }
+
+        if (dist < 20) {
+            nearest.health -= 0.5;
+            if (nearest.health <= 0 && nearest.alive) {
+                nearest.alive = false;
+                setTimeout(() => {
+                    nearest.x = SPAWN_POINTS[0].x;
+                    nearest.y = SPAWN_POINTS[0].y;
+                    nearest.health = 100;
+                    nearest.alive = true;
+                }, 3000);
+            }
+        }
+    });
+}
+
+function updateBullets(room) {
+    room.bullets.forEach(b => {
+        b.x += b.dx * b.speed;
+        b.y += b.dy * b.speed;
+        if (checkWallCollision(b.x, b.y, 5)) b.dead = true;
+    });
+    room.bullets = room.bullets.filter(b => !b.dead && b.x > 0 && b.x < GAME_WIDTH && b.y > 0 && b.y < GAME_HEIGHT);
+}
+
+function checkCollisions(room) {
+    room.bullets.forEach(b => {
+        room.zombies.forEach((z, zi) => {
+            const dist = Math.hypot(b.x - z.x, b.y - z.y);
+            if (dist < 20) {
+                z.health -= 1;
+                b.dead = true;
+                if (z.health <= 0) {
+                    room.zombies.splice(zi, 1);
+                    if (room.players[b.owner]) room.players[b.owner].score++;
+                }
+            }
+        });
+    });
+}
+
+// ============================
+// BROADCAST HELPERS
+// ============================
+function broadcastToRoom(room, message) {
+    const str = JSON.stringify(message);
+    Object.keys(room.players).forEach(pid => {
+        const ws = playerWs[pid];
+        if (ws && ws.readyState === 1) ws.send(str);
+    });
+}
+
+function broadcastRoomState(room) {
+    broadcastToRoom(room, {
+        type: 'state',
+        players: room.players,
+        zombies: room.zombies,
+        bullets: room.bullets
+    });
+}
+
+function broadcastLobbyUpdate(room) {
+    broadcastToRoom(room, {
+        type: 'lobby_update',
+        roomId: room.id,
+        players: Object.values(room.players).map(p => ({ id: p.id, name: p.name }))
+    });
+}
+
+// ============================
+// WEBSOCKET CONNECTIONS
+// ============================
 wss.on('connection', (ws) => {
-    const playerId = playerIdCounter++;
-    players[playerId] = {
-        id: playerId,
-        x: 50, y: 50,
-        health: 100,
-        alive: true,
-        score: 0
-    };
-
-    // Send initial config including walls
-    ws.send(JSON.stringify({ type: 'init', playerId, walls }));
+    let playerId = null;
 
     ws.on('message', (msg) => {
         const data = JSON.parse(msg);
-        const p = players[playerId];
+
+        // ---- JOIN: assign player to a room ----
+        if (data.type === 'join') {
+            playerId = playerIdCounter++;
+            playerWs[playerId] = ws;
+
+            const room = findAvailableRoom();
+            const spawnIdx = getRoomPlayerCount(room) % SPAWN_POINTS.length;
+            const spawn = SPAWN_POINTS[spawnIdx];
+
+            room.players[playerId] = {
+                id: playerId,
+                name: data.name || `Player${playerId}`,
+                x: spawn.x, y: spawn.y,
+                health: 100,
+                alive: true,
+                score: 0
+            };
+            playerRoom[playerId] = room.id;
+
+            // Confirm join to this player
+            ws.send(JSON.stringify({
+                type: 'joined',
+                playerId,
+                roomId: room.id,
+                walls,
+                roomState: room.state,
+                players: Object.values(room.players).map(p => ({ id: p.id, name: p.name }))
+            }));
+
+            // Notify everyone in lobby
+            broadcastLobbyUpdate(room);
+            console.log(`Player ${playerId} (${data.name}) joined room ${room.id}`);
+            return;
+        }
+
+        // All subsequent messages require playerId to be set
+        if (!playerId) return;
+
+        const room = rooms[playerRoom[playerId]];
+        if (!room) return;
+        const p = room.players[playerId];
+
+        // ---- START GAME ----
+        if (data.type === 'start_game') {
+            if (room.state === 'lobby') {
+                room.state = 'playing';
+                startGameLoop(room);
+                broadcastToRoom(room, { type: 'game_started' });
+                console.log(`Room ${room.id} game started`);
+            }
+            return;
+        }
+
+        // ---- IN-GAME ACTIONS ----
+        if (room.state !== 'playing') return;
         if (!p || !p.alive) return;
 
         if (data.type === 'move') {
             const nextX = p.x + data.dx;
             const nextY = p.y + data.dy;
-
-            // Check boundaries & walls
-            if (!checkWallCollision(nextX, p.y, 20)) {
-                p.x = Math.max(0, Math.min(780, nextX));
-            }
-            if (!checkWallCollision(p.x, nextY, 20)) {
-                p.y = Math.max(0, Math.min(580, nextY));
-            }
+            if (!checkWallCollision(nextX, p.y, 20)) p.x = Math.max(0, Math.min(GAME_WIDTH - 20, nextX));
+            if (!checkWallCollision(p.x, nextY, 20)) p.y = Math.max(0, Math.min(GAME_HEIGHT - 20, nextY));
         }
 
         if (data.type === 'shoot') {
-            bullets.push({
+            room.bullets.push({
                 id: bulletIdCounter++,
                 x: data.x, y: data.y,
                 dx: data.dx, dy: data.dy,
@@ -117,82 +313,29 @@ wss.on('connection', (ws) => {
         }
     });
 
-    ws.on('close', () => { delete players[playerId]; });
+    ws.on('close', () => {
+        if (!playerId) return;
+        const roomId = playerRoom[playerId];
+        const room = rooms[roomId];
+        if (room) {
+            delete room.players[playerId];
+            console.log(`Player ${playerId} left room ${roomId}`);
+
+            if (room.state === 'lobby') {
+                broadcastLobbyUpdate(room);
+            }
+
+            // Clean up empty rooms
+            if (Object.keys(room.players).length === 0) {
+                stopGameLoop(room);
+                delete rooms[roomId];
+                console.log(`Room ${roomId} removed (empty)`);
+            }
+        }
+        delete playerRoom[playerId];
+        delete playerWs[playerId];
+    });
 });
-
-// ============================
-// LOGIC (Zombies now respect walls)
-// ============================
-function spawnZombie() {
-    zombies.push({ x: 750, y: Math.random() * 550, speed: 1.2, health: 2 });
-}
-
-function updateZombies() {
-    zombies.forEach(z => {
-        const alivePlayers = Object.values(players).filter(p => p.alive);
-        if (alivePlayers.length === 0) return;
-
-        const target = alivePlayers[0]; 
-        const dx = target.x - z.x;
-        const dy = target.y - z.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist > 0) {
-            const moveX = (dx / dist) * z.speed;
-            const moveY = (dy / dist) * z.speed;
-            
-            // Zombie wall avoidance (simple)
-            if (!checkWallCollision(z.x + moveX, z.y, 20)) z.x += moveX;
-            if (!checkWallCollision(z.x, z.y + moveY, 20)) z.y += moveY;
-        }
-
-        if (dist < 20) {
-            target.health -= 0.5;
-            if (target.health <= 0 && target.alive) {
-                target.alive = false;
-                setTimeout(() => {
-                    target.x = 50; target.y = 50;
-                    target.health = 100; target.alive = true;
-                }, 3000);
-            }
-        }
-    });
-}
-
-function updateBullets() {
-    bullets.forEach(b => {
-        b.x += b.dx * b.speed;
-        b.y += b.dy * b.speed;
-        // Kill bullet if it hits a wall
-        if (checkWallCollision(b.x, b.y, 5)) b.dead = true;
-    });
-    bullets = bullets.filter(b => !b.dead && b.x > 0 && b.x < 800 && b.y > 0 && b.y < 600);
-}
-
-function checkCollisions() {
-    bullets.forEach(b => {
-        zombies.forEach((z, zi) => {
-            const dist = Math.sqrt((b.x - z.x)**2 + (b.y - z.y)**2);
-            if (dist < 20) {
-                z.health -= 1;
-                b.dead = true;
-                if (z.health <= 0) {
-                    zombies.splice(zi, 1);
-                    if (players[b.owner]) players[b.owner].score++;
-                }
-            }
-        });
-    });
-}
-
-function broadcastGameState() {
-    const state = JSON.stringify({ type: 'state', players, zombies, bullets });
-    wss.clients.forEach(client => {
-        if (client.readyState === 1) client.send(state);
-    });
-}
 
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
