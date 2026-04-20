@@ -1,396 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>ZombieNet</title>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Oswald:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-            --bg: #0a0a0a;
-            --panel: #111318;
-            --border: #2a2d35;
-            --accent: #c8f135;
-            --accent2: #ff3c3c;
-            --text: #e8eaf0;
-            --muted: #555c6e;
-            --mono: 'Share Tech Mono', monospace;
-            --display: 'Oswald', sans-serif;
-        }
-
-        body {
-            margin: 0;
-            background: var(--bg);
-            color: var(--text);
-            font-family: var(--mono);
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            width: 100vw;
-        }
-
-        /* Scanline overlay */
-        body::after {
-            content: '';
-            pointer-events: none;
-            position: fixed;
-            inset: 0;
-            background: repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 2px,
-                rgba(0,0,0,0.08) 2px,
-                rgba(0,0,0,0.08) 4px
-            );
-            z-index: 9999;
-        }
-
-        /* ====== SCREENS ====== */
-        .screen {
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: 100%;
-        }
-        .screen.active { display: flex; }
-
-        /* ====== MENU ====== */
-        #menuScreen {
-            gap: 0;
-            background:
-                radial-gradient(ellipse 60% 40% at 50% 30%, rgba(200,241,53,0.06) 0%, transparent 70%),
-                var(--bg);
-        }
-
-        .logo {
-            font-family: var(--display);
-            font-size: 72px;
-            font-weight: 700;
-            letter-spacing: 6px;
-            text-transform: uppercase;
-            color: var(--accent);
-            text-shadow: 0 0 40px rgba(200,241,53,0.4), 0 0 80px rgba(200,241,53,0.15);
-            margin-bottom: 8px;
-            animation: flicker 4s infinite;
-        }
-
-        @keyframes flicker {
-            0%,94%,96%,100% { opacity: 1; }
-            95% { opacity: 0.7; }
-        }
-
-        .logo-sub {
-            font-family: var(--mono);
-            font-size: 12px;
-            letter-spacing: 8px;
-            color: var(--muted);
-            text-transform: uppercase;
-            margin-bottom: 60px;
-        }
-
-        .menu-panel {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            padding: 40px 48px;
-            width: 380px;
-            position: relative;
-        }
-
-        .menu-panel::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 2px;
-            background: var(--accent);
-        }
-
-        .field-label {
-            font-size: 10px;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            color: var(--muted);
-            margin-bottom: 8px;
-        }
-
-        .field-input {
-            width: 100%;
-            background: #0d0f13;
-            border: 1px solid var(--border);
-            border-bottom: 2px solid var(--accent);
-            color: var(--text);
-            font-family: var(--mono);
-            font-size: 18px;
-            padding: 12px 14px;
-            outline: none;
-            transition: border-color 0.2s;
-            margin-bottom: 28px;
-        }
-
-        .field-input:focus {
-            border-color: var(--accent);
-            background: #13161d;
-        }
-
-        .btn-primary {
-            width: 100%;
-            background: var(--accent);
-            color: #0a0a0a;
-            border: none;
-            font-family: var(--display);
-            font-size: 18px;
-            font-weight: 700;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            padding: 16px;
-            cursor: pointer;
-            transition: background 0.15s, transform 0.1s;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .btn-primary:hover { background: #d9ff40; }
-        .btn-primary:active { transform: scale(0.98); }
-        .btn-primary:disabled { background: var(--muted); cursor: not-allowed; color: #333; }
-
-        .btn-secondary {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--muted);
-            font-family: var(--display);
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            padding: 10px 20px;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-
-        .btn-secondary:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        /* ====== LOBBY ====== */
-        #lobbyScreen {
-            background:
-                radial-gradient(ellipse 50% 50% at 50% 50%, rgba(200,241,53,0.04) 0%, transparent 70%),
-                var(--bg);
-        }
-
-        .lobby-container {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            width: 460px;
-            position: relative;
-        }
-
-        .lobby-header {
-            padding: 24px 32px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .lobby-title {
-            font-family: var(--display);
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            color: var(--accent);
-        }
-
-        .room-badge {
-            font-size: 10px;
-            letter-spacing: 2px;
-            color: var(--muted);
-            background: #0d0f13;
-            border: 1px solid var(--border);
-            padding: 4px 10px;
-        }
-
-        .player-list {
-            padding: 24px 32px;
-            min-height: 200px;
-        }
-
-        .player-slot {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            padding: 12px 0;
-            border-bottom: 1px solid #1a1d24;
-            animation: slideIn 0.2s ease;
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-10px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        .player-slot:last-child { border-bottom: none; }
-
-        .slot-empty {
-            padding: 12px 0;
-            border-bottom: 1px solid #1a1d24;
-            color: var(--muted);
-            font-size: 12px;
-            letter-spacing: 2px;
-        }
-        .slot-empty:last-child { border-bottom: none; }
-
-        .player-icon {
-            width: 32px;
-            height: 32px;
-            border: 2px solid var(--accent);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            color: var(--accent);
-            flex-shrink: 0;
-        }
-
-        .player-name-lobby {
-            font-size: 16px;
-            color: var(--text);
-            flex: 1;
-        }
-
-        .you-tag {
-            font-size: 9px;
-            letter-spacing: 2px;
-            color: var(--accent);
-            background: rgba(200,241,53,0.1);
-            border: 1px solid rgba(200,241,53,0.3);
-            padding: 2px 7px;
-        }
-
-        .lobby-footer {
-            padding: 24px 32px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .lobby-status {
-            font-size: 11px;
-            letter-spacing: 2px;
-            color: var(--muted);
-            text-align: center;
-        }
-
-        .waiting-dots::after {
-            content: '...';
-            animation: dots 1.5s steps(4, end) infinite;
-        }
-
-        @keyframes dots {
-            0%   { content: ''; }
-            25%  { content: '.'; }
-            50%  { content: '..'; }
-            75%  { content: '...'; }
-        }
-
-        /* ====== GAME ====== */
-        #gameScreen {
-            align-items: center;
-            justify-content: center;
-            background: #0a0a0a;
-        }
-
-        #gameWrapper {
-            position: relative;
-        }
-
-        canvas {
-            display: block;
-            background: #1a1d24;
-            border: 1px solid var(--border);
-        }
-
-        #hud {
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            padding: 12px 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            pointer-events: none;
-        }
-
-        .hud-box {
-            background: rgba(10,10,10,0.85);
-            border: 1px solid var(--border);
-            padding: 6px 14px;
-            font-size: 12px;
-            letter-spacing: 2px;
-            color: var(--muted);
-        }
-
-        .hud-box span {
-            color: var(--accent);
-            font-size: 16px;
-        }
-
-        #deathOverlay {
-            display: none;
-            position: absolute;
-            inset: 0;
-            background: rgba(0,0,0,0.75);
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        #deathOverlay.visible {
-            display: flex;
-        }
-
-        .death-title {
-            font-family: var(--display);
-            font-size: 48px;
-            font-weight: 700;
-            color: var(--accent2);
-            letter-spacing: 4px;
-            text-transform: uppercase;
-            text-shadow: 0 0 30px rgba(255,60,60,0.5);
-        }
-
-        .death-sub {
-            font-size: 12px;
-            letter-spacing: 4px;
-            color: var(--muted);
-            text-transform: uppercase;
-        }
-
-        /* Controls hint */
-        #controls {
-            position: absolute;
-            bottom: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 10px;
-            letter-spacing: 2px;
-            color: var(--muted);
-            pointer-events: none;
-            white-space: nowrap;
-        }
-    </style>
+    <link href="style.css" rel="stylesheet">
 </head>
 <body>
 
 <!-- ====== MAIN MENU ====== -->
 <div id="menuScreen" class="screen active">
-    <div class="logo">ZombieNet</div>
+    <div class="logo">Zombaja</div>
     <div class="logo-sub">Multiplayer Survival</div>
     <div class="menu-panel">
         <div class="field-label">Your Callsign</div>
@@ -420,7 +40,7 @@
 <!-- ====== GAME ====== -->
 <div id="gameScreen" class="screen">
     <div id="gameWrapper">
-        <canvas id="game" width="800" height="600" tabindex="1"></canvas>
+        <canvas id="game" width="1280" height="720" tabindex="1"></canvas>
         <div id="hud">
             <div class="hud-box">SCORE <span id="hudScore">0</span></div>
             <div class="hud-box">HP <span id="hudHp">100</span></div>
@@ -429,7 +49,7 @@
             <div class="death-title">You Died</div>
             <div class="death-sub">Respawning<span class="waiting-dots"></span></div>
         </div>
-        <div id="controls">WASD — Move &nbsp;|&nbsp; Mouse Click — Shoot</div>
+        <div id="controls">WASD - Move RMB - Shoot</div>
     </div>
 </div>
 
@@ -437,7 +57,11 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-// Player colors for up to 4 players (assigned by slot index)
+const CANVAS_W = 1280;
+const CANVAS_H = 720;
+const GAME_W = 1600;
+const GAME_H = 1000;
+
 const PLAYER_COLORS = ['#4fc3f7', '#81c784', '#ffb74d', '#f06292'];
 
 let ws = null;
@@ -446,8 +70,24 @@ let roomId = null;
 let playerName = '';
 let walls = [];
 let gameState = { players: {}, zombies: [], bullets: [] };
-let playerColorMap = {}; // playerId -> color index
+let playerColorMap = {};
 let colorCounter = 0;
+
+// Camera
+let camX = 0, camY = 0;
+
+function worldToScreen(wx, wy) {
+    return { x: wx - camX, y: wy - camY };
+}
+
+function updateCamera() {
+    const me = gameState.players[playerId];
+    if (!me) return;
+    camX = me.x + 10 - CANVAS_W / 2;
+    camY = me.y + 10 - CANVAS_H / 2;
+    camX = Math.max(0, Math.min(GAME_W - CANVAS_W, camX));
+    camY = Math.max(0, Math.min(GAME_H - CANVAS_H, camY));
+}
 
 // ============================
 // SCREEN MANAGEMENT
@@ -493,9 +133,9 @@ function connect() {
     };
 
     ws.onclose = () => {
-        // If in game, go back to menu
         showScreen('menuScreen');
-        playerId = null; roomId = null; walls = []; gameState = { players: {}, zombies: [], bullets: [] };
+        playerId = null; roomId = null; walls = [];
+        gameState = { players: {}, zombies: [], bullets: [] };
     };
 }
 
@@ -533,7 +173,6 @@ function updateLobbyPlayers(players) {
     const list = document.getElementById('playerList');
     list.innerHTML = '';
 
-    // Assign colors to players we haven't seen before
     players.forEach(p => {
         if (playerColorMap[p.id] === undefined) {
             playerColorMap[p.id] = colorCounter++ % PLAYER_COLORS.length;
@@ -556,7 +195,7 @@ function updateLobbyPlayers(players) {
             `;
         } else {
             slot.className = 'slot-empty';
-            slot.textContent = `[ Slot ${i+1} — Open ]`;
+            slot.textContent = `[ Player ${i+1} ]`;
         }
         list.appendChild(slot);
     }
@@ -580,7 +219,6 @@ function syncGameState(data) {
     gameState.zombies = data.zombies;
     gameState.bullets = data.bullets;
 
-    // Assign colors to new players
     for (let id in data.players) {
         if (playerColorMap[id] === undefined) {
             playerColorMap[id] = colorCounter++ % PLAYER_COLORS.length;
@@ -612,12 +250,10 @@ function syncGameState(data) {
         }
     }
 
-    // Remove disconnected players
     for (let id in gameState.players) {
         if (!data.players[id]) delete gameState.players[id];
     }
 
-    // Update HUD
     const me = gameState.players[playerId];
     if (me) {
         document.getElementById('hudScore').textContent = me.score;
@@ -632,7 +268,6 @@ function syncGameState(data) {
 const keys = {};
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
-    // Only prevent default during gameplay (not in menu/lobby input fields)
     if (document.getElementById('gameScreen').classList.contains('active')) {
         e.preventDefault();
     }
@@ -647,8 +282,11 @@ canvas.addEventListener('mousedown', (e) => {
     const me = gameState.players[playerId];
     if (!me || !me.alive) return;
     const rect = canvas.getBoundingClientRect();
-    let dx = (e.clientX - rect.left) - (me.x + 10);
-    let dy = (e.clientY - rect.top) - (me.y + 10);
+    // Convert screen click to world coords
+    const worldX = (e.clientX - rect.left) * (CANVAS_W / rect.width) + camX;
+    const worldY = (e.clientY - rect.top)  * (CANVAS_H / rect.height) + camY;
+    let dx = worldX - (me.x + 10);
+    let dy = worldY - (me.y + 10);
     const dist = Math.hypot(dx, dy);
     if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({ type: 'shoot', x: me.x + 10, y: me.y + 10, dx: dx / dist, dy: dy / dist }));
@@ -667,8 +305,8 @@ function movePlayer() {
     if (keys['KeyD'] || keys['ArrowRight']) dx += speed;
 
     if (dx !== 0 || dy !== 0) {
-        if (!checkWallCollision(me.x + dx, me.y, 20)) me.x = Math.max(0, Math.min(780, me.x + dx));
-        if (!checkWallCollision(me.x, me.y + dy, 20)) me.y = Math.max(0, Math.min(580, me.y + dy));
+        if (!checkWallCollision(me.x + dx, me.y, 20)) me.x = Math.max(0, Math.min(GAME_W - 20, me.x + dx));
+        if (!checkWallCollision(me.x, me.y + dy, 20)) me.y = Math.max(0, Math.min(GAME_H - 20, me.y + dy));
         ws.send(JSON.stringify({ type: 'move', dx, dy }));
     }
 }
@@ -677,19 +315,34 @@ function movePlayer() {
 // RENDER
 // ============================
 function draw() {
-    ctx.clearRect(0, 0, 800, 600);
+    updateCamera();
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
-    // Grid background
+    ctx.save();
+    ctx.translate(-camX, -camY);
+
+    // Grid background (samo vidljivi deo)
     ctx.strokeStyle = 'rgba(255,255,255,0.03)';
     ctx.lineWidth = 1;
-    for (let x = 0; x < 800; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 600); ctx.stroke(); }
-    for (let y = 0; y < 600; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(800, y); ctx.stroke(); }
+    const gx0 = Math.floor(camX / 40) * 40;
+    const gy0 = Math.floor(camY / 40) * 40;
+    for (let x = gx0; x < camX + CANVAS_W; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, camY); ctx.lineTo(x, camY + CANVAS_H); ctx.stroke();
+    }
+    for (let y = gy0; y < camY + CANVAS_H; y += 40) {
+        ctx.beginPath(); ctx.moveTo(camX, y); ctx.lineTo(camX + CANVAS_W, y); ctx.stroke();
+    }
+
+    // Map border
+    ctx.strokeStyle = '#3a3f4d';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(0, 0, GAME_W, GAME_H);
 
     // Walls
     walls.forEach(w => {
         ctx.fillStyle = '#2a2d35';
         ctx.fillRect(w.x, w.y, w.w, w.h);
-        ctx.strokeStyle = '#3a3f4d';
+        ctx.strokeStyle = '#4a5060';
         ctx.lineWidth = 1;
         ctx.strokeRect(w.x, w.y, w.w, w.h);
     });
@@ -698,7 +351,6 @@ function draw() {
     gameState.zombies.forEach(z => {
         ctx.fillStyle = '#ff3c3c';
         ctx.fillRect(z.x, z.y, 20, 20);
-        // Zombie eyes
         ctx.fillStyle = '#ffff00';
         ctx.fillRect(z.x + 4, z.y + 5, 4, 4);
         ctx.fillRect(z.x + 12, z.y + 5, 4, 4);
@@ -720,31 +372,30 @@ function draw() {
         const color = PLAYER_COLORS[colorIdx];
         const isMe = p.id == playerId;
 
-        // Player body
         ctx.fillStyle = color;
         ctx.fillRect(p.x, p.y, 20, 20);
 
         if (isMe) {
-            // Outline for self
             ctx.strokeStyle = 'white';
             ctx.lineWidth = 1.5;
             ctx.strokeRect(p.x, p.y, 20, 20);
         }
 
-        // Health bar background
+        // Health bar
         ctx.fillStyle = '#1a1d24';
         ctx.fillRect(p.x - 5, p.y - 12, 30, 5);
-        // Health bar fill
         ctx.fillStyle = p.health > 50 ? '#81c784' : p.health > 25 ? '#ffb74d' : '#ef5350';
         ctx.fillRect(p.x - 5, p.y - 12, (p.health / 100) * 30, 5);
 
-        // Player name
+        // Name
         ctx.font = '11px "Share Tech Mono"';
         ctx.textAlign = 'center';
         ctx.fillStyle = isMe ? 'white' : color;
         ctx.fillText(p.name, p.x + 10, p.y - 16);
         ctx.textAlign = 'left';
     });
+
+    ctx.restore();
 
     requestAnimationFrame(draw);
 }
@@ -757,4 +408,3 @@ setInterval(movePlayer, 1000 / 60);
 draw();
 </script>
 </body>
-</html>

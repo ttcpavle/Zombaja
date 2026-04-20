@@ -8,10 +8,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const server = http.createServer((req, res) => {
-    const filePath = path.join(__dirname, 'client', 'index.html');
+    let filePath = path.join(__dirname, 'client', req.url === '/' ? 'index.html' : req.url);
+    const ext = path.extname(filePath);
+    const mimeTypes = {
+        '.html': 'text/html',
+        '.css':  'text/css',
+        '.js':   'text/javascript',
+    };
     fs.readFile(filePath, (err, content) => {
-        if (err) { res.writeHead(500); res.end('Error loading index.html'); return; }
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        if (err) { res.writeHead(404); res.end('Not found'); return; }
+        res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'text/plain' });
         res.end(content);
     });
 });
@@ -22,21 +28,66 @@ const wss = new WebSocketServer({ server });
 // CONSTANTS
 // ============================
 const MAX_PLAYERS_PER_ROOM = 4;
-const GAME_WIDTH = 800;
-const GAME_HEIGHT = 600;
+const GAME_WIDTH = 1600;
+const GAME_HEIGHT = 1000;
+const MAX_ZOMBIES = 1;
+
 
 const walls = [
-    { x: 150, y: 150, w: 100, h: 20 },
-    { x: 400, y: 100, w: 20, h: 150 },
-    { x: 500, y: 400, w: 200, h: 20 },
-    { x: 200, y: 400, w: 20, h: 100 }
+    // Gornji levi blok
+    { x: 180, y: 120, w: 120, h: 20 },
+    { x: 180, y: 120, w: 20,  h: 100 },
+    { x: 280, y: 120, w: 20,  h: 100 },
+
+    // Gornji desni blok
+    { x: 1100, y: 100, w: 20,  h: 160 },
+    { x: 1100, y: 100, w: 160, h: 20  },
+    { x: 1260, y: 100, w: 20,  h: 160 },
+
+    // Centralni lavirint
+    { x: 650, y: 200, w: 20,  h: 200 },
+    { x: 650, y: 200, w: 200, h: 20  },
+    { x: 850, y: 200, w: 20,  h: 120 },
+    { x: 650, y: 400, w: 140, h: 20  },
+
+    // Levi hodnik
+    { x: 300, y: 400, w: 200, h: 20 },
+    { x: 300, y: 420, w: 20,  h: 120 },
+
+    // Desni hodnik
+    { x: 1100, y: 420, w: 20,  h: 120 },
+    { x: 1000, y: 540, w: 120, h: 20  },
+
+    // Donji levi blok
+    { x: 200, y: 680, w: 160, h: 20  },
+    { x: 200, y: 680, w: 20,  h: 120 },
+    { x: 360, y: 680, w: 20,  h: 120 },
+    { x: 200, y: 800, w: 180, h: 20  },
+
+    // Donji desni blok
+    { x: 1200, y: 700, w: 20,  h: 160 },
+    { x: 1200, y: 700, w: 160, h: 20  },
+    { x: 1360, y: 700, w: 20,  h: 160 },
+    { x: 1200, y: 860, w: 180, h: 20  },
+
+    // Srednji donji zid
+    { x: 680, y: 700, w: 240, h: 20 },
+    { x: 680, y: 720, w: 20,  h: 80 },
+    { x: 900, y: 720, w: 20,  h: 80 },
+
+    // Gornji srednji zid
+    { x: 600, y: 60, w: 160, h: 20 },
+
+    // Ostali zidovi
+    { x: 460,  y: 560, w: 20,  h: 100 },
+    { x: 1080, y: 300, w: 100, h: 20  },
 ];
 
 const SPAWN_POINTS = [
-    { x: 50, y: 50 },
-    { x: 730, y: 50 },
-    { x: 50, y: 530 },
-    { x: 730, y: 530 }
+    { x: 60,   y: 60  },
+    { x: 1520, y: 60  },
+    { x: 60,   y: 920 },
+    { x: 1520, y: 920 }
 ];
 
 // ============================
@@ -134,7 +185,7 @@ function spawnZombie(room) {
         { x: GAME_WIDTH - 20, y: Math.random() * GAME_HEIGHT },
     ];
     const pos = edges[Math.floor(Math.random() * edges.length)];
-    room.zombies.push({ x: pos.x, y: pos.y, speed: 1.2, health: 2 });
+    room.zombies.push({ x: pos.x, y: pos.y, speed: 5, health: 4 });
 }
 
 function updateZombies(room) {
@@ -142,26 +193,40 @@ function updateZombies(room) {
     if (alivePlayers.length === 0) return;
 
     room.zombies.forEach(z => {
-        // Target nearest player
-        let nearest = alivePlayers[0];
+        // Find nearest alive player
+        let nearest = null;
         let nearestDist = Infinity;
         alivePlayers.forEach(p => {
             const d = Math.hypot(p.x - z.x, p.y - z.y);
             if (d < nearestDist) { nearestDist = d; nearest = p; }
         });
+        if (!nearest) return;
 
+        // Move toward player
         const dx = nearest.x - z.x;
         const dy = nearest.y - z.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
+        const dist = Math.hypot(dx, dy);
         if (dist > 0) {
-            const moveX = (dx / dist) * z.speed;
-            const moveY = (dy / dist) * z.speed;
-            if (!checkWallCollision(z.x + moveX, z.y, 20)) z.x += moveX;
-            if (!checkWallCollision(z.x, z.y + moveY, 20)) z.y += moveY;
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const moveX = nx * z.speed;
+            const moveY = ny * z.speed;
+
+            // Check both axes against original position, then apply independently
+            const nextX = z.x + moveX;
+            const nextY = z.y + moveY;
+            const canMoveX = !checkWallCollision(nextX, z.y, 20);
+            const canMoveY = !checkWallCollision(z.x, nextY, 20);
+            if (canMoveX) z.x = nextX;
+            if (canMoveY) z.y = nextY;
         }
 
-        if (dist < 20) {
+        // Clamp to boundaries
+        z.x = Math.max(0, Math.min(GAME_WIDTH - 20, z.x));
+        z.y = Math.max(0, Math.min(GAME_HEIGHT - 20, z.y));
+
+        // Damage player on contact
+        if (nearestDist < 20) {
             nearest.health -= 0.5;
             if (nearest.health <= 0 && nearest.alive) {
                 nearest.alive = false;
