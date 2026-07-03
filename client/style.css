@@ -391,6 +391,42 @@ canvas {
   font-size: 16px;
 }
 
+.hud-box.hud-ping {
+  min-width: 90px;
+  text-align: right;
+}
+
+.hud-box.hud-ping span {
+  color: var(--accent);
+}
+
+.hud-box.hud-ping.ping-good span {
+  color: #74e56d;
+}
+
+.hud-box.hud-ping.ping-medium span {
+  color: #ffde57;
+}
+
+.hud-box.hud-ping.ping-bad span {
+  color: #ff6b6b;
+}
+
+#waveOverlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.025);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#waveOverlay.visible {
+  display: flex;
+}
+
 #deathOverlay {
   display: none;
   position: absolute;
@@ -434,4 +470,16 @@ canvas {
   color: var(--muted);
   pointer-events: none;
   white-space: nowrap;
+}
+
+#weapon {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 100px;
+  height: 100px;
+  letter-spacing: 2px;
+  color: var(--accent2);
+  pointer-events: none;
+  text-transform: uppercase;
 }

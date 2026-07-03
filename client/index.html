@@ -1,410 +1,110 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>ZombieNet</title>
-    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Oswald:wght@400;700&display=swap" rel="stylesheet">
-    <link href="style.css" rel="stylesheet">
-</head>
-<body>
-
-<!-- ====== MAIN MENU ====== -->
-<div id="menuScreen" class="screen active">
-    <div class="logo">Zombaja</div>
-    <div class="logo-sub">Multiplayer Survival</div>
-    <div class="menu-panel">
+    <link
+      href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Oswald:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link href="style.css" rel="stylesheet" />
+  </head>
+  <body>
+    <!-- ====== MAIN MENU ====== -->
+    <div id="menuScreen" class="screen active">
+      <div class="logo">Zombaja</div>
+      <div class="logo-sub">Multiplayer Survival</div>
+      <div class="menu-panel">
         <div class="field-label">Your Callsign</div>
-        <input class="field-input" id="nameInput" type="text" maxlength="16" placeholder="Enter name..." autocomplete="off" />
-        <button class="btn-primary" id="joinBtn" onclick="joinGame()">Join Game</button>
+        <input
+          class="field-input"
+          id="nameInput"
+          type="text"
+          maxlength="16"
+          placeholder="Enter name..."
+          autocomplete="off"
+        />
+        <button class="btn-primary" id="randomBtn" onclick="joinRandomGame()">
+          Start Game
+        </button>
+        <div class="field-label">---------------------------------</div>
+        <button
+          class="btn-primary"
+          id="createBtn"
+          onclick="createPrivateLobby()"
+        >
+          Create private lobby
+        </button>
+        <div class="field-label">Join private room</div>
+        <input
+          class="field-input"
+          id="codeInput"
+          type="text"
+          maxlength="16"
+          placeholder="Enter code..."
+          autocomplete="off"
+        />
+        <button class="btn-secondary" id="codeBtn" onclick="joinGame()">
+          Join existing lobby
+        </button>
+      </div>
     </div>
-</div>
 
-<!-- ====== LOBBY ====== -->
-<div id="lobbyScreen" class="screen">
-    <div class="lobby-container">
+    <!-- ====== LOBBY ====== -->
+    <div id="lobbyScreen" class="screen">
+      <div class="lobby-container">
         <div class="lobby-header">
-            <div class="lobby-title">Lobby</div>
-            <div class="room-badge" id="roomBadge">ROOM #--</div>
+          <div class="lobby-title">Lobby</div>
+          <div class="room-badge" id="roomBadge">ROOM #--</div>
+          <div class="room-code" id="roomCode"></div>
         </div>
         <div class="player-list" id="playerList"></div>
         <div class="lobby-footer">
-            <div class="lobby-status">
-                <span class="waiting-dots">Waiting for players</span>
-            </div>
-            <button class="btn-primary" id="startBtn" onclick="startGame()">Start Game</button>
-            <button class="btn-secondary" onclick="leaveRoom()">Leave Room</button>
+          <div class="lobby-status">
+            <span class="waiting-dots">Waiting for players</span>
+          </div>
+          <button class="btn-primary" id="startBtn" onclick="startGame()">
+            Start Game
+          </button>
+          <button class="btn-secondary" onclick="leaveRoom()">
+            Leave Room
+          </button>
         </div>
+      </div>
     </div>
-</div>
 
-<!-- ====== GAME ====== -->
-<div id="gameScreen" class="screen">
-    <div id="gameWrapper">
+    <!-- ====== GAME ====== -->
+    <div id="gameScreen" class="screen">
+      <div id="gameWrapper">
         <canvas id="game" width="1280" height="720" tabindex="1"></canvas>
         <div id="hud">
-            <div class="hud-box">SCORE <span id="hudScore">0</span></div>
-            <div class="hud-box">HP <span id="hudHp">100</span></div>
+          <div class="hud-box">SCORE <span id="hudScore">0</span></div>
+          <div class="hud-box">HP <span id="hudHp">100</span></div>
+          <div class="hud-box hud-ping" id="hudPing">PING <span>--</span></div>
+        </div>
+        <div id="waveOverlay">
+          <div class="death-title">wave 52</div>
+          <div class="death-sub">oh no<span class="waiting-dots"></span></div>
         </div>
         <div id="deathOverlay">
-            <div class="death-title">You Died</div>
-            <div class="death-sub">Respawning<span class="waiting-dots"></span></div>
+          <div class="death-title">You Died</div>
+          <div class="death-sub">
+            Respawning<span class="waiting-dots"></span>
+          </div>
         </div>
-        <div id="controls">WASD - Move RMB - Shoot</div>
+        <div id="controls">
+          WASD - Move // RMB - Shoot // change weapon - (1-4) or scroll
+        </div>
+        <div id="weapon">pistol</div>
+      </div>
     </div>
-</div>
 
-<script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-
-const CANVAS_W = 1280;
-const CANVAS_H = 720;
-const GAME_W = 1600;
-const GAME_H = 1000;
-
-const PLAYER_COLORS = ['#4fc3f7', '#81c784', '#ffb74d', '#f06292'];
-
-let ws = null;
-let playerId = null;
-let roomId = null;
-let playerName = '';
-let walls = [];
-let gameState = { players: {}, zombies: [], bullets: [] };
-let playerColorMap = {};
-let colorCounter = 0;
-
-// Camera
-let camX = 0, camY = 0;
-
-function worldToScreen(wx, wy) {
-    return { x: wx - camX, y: wy - camY };
-}
-
-function updateCamera() {
-    const me = gameState.players[playerId];
-    if (!me) return;
-    camX = me.x + 10 - CANVAS_W / 2;
-    camY = me.y + 10 - CANVAS_H / 2;
-    camX = Math.max(0, Math.min(GAME_W - CANVAS_W, camX));
-    camY = Math.max(0, Math.min(GAME_H - CANVAS_H, camY));
-}
-
-// ============================
-// SCREEN MANAGEMENT
-// ============================
-function showScreen(id) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    if (id === 'gameScreen') {
-        setTimeout(() => canvas.focus(), 50);
-    }
-}
-
-// ============================
-// WEBSOCKET SETUP
-// ============================
-function connect() {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(`${proto}://${location.host}`);
-
-    ws.onmessage = (msg) => {
-        const data = JSON.parse(msg.data);
-
-        if (data.type === 'joined') {
-            playerId = data.playerId;
-            roomId = data.roomId;
-            walls = data.walls;
-            document.getElementById('roomBadge').textContent = `ROOM #${roomId}`;
-            updateLobbyPlayers(data.players);
-            showScreen('lobbyScreen');
-        }
-
-        if (data.type === 'lobby_update') {
-            updateLobbyPlayers(data.players);
-        }
-
-        if (data.type === 'game_started') {
-            showScreen('gameScreen');
-        }
-
-        if (data.type === 'state') {
-            syncGameState(data);
-        }
-    };
-
-    ws.onclose = () => {
-        showScreen('menuScreen');
-        playerId = null; roomId = null; walls = [];
-        gameState = { players: {}, zombies: [], bullets: [] };
-    };
-}
-
-// ============================
-// MENU ACTIONS
-// ============================
-function joinGame() {
-    const name = document.getElementById('nameInput').value.trim();
-    if (!name) {
-        document.getElementById('nameInput').focus();
-        document.getElementById('nameInput').style.borderBottomColor = '#ff3c3c';
-        setTimeout(() => document.getElementById('nameInput').style.borderBottomColor = 'var(--accent)', 800);
-        return;
-    }
-    playerName = name;
-    document.getElementById('joinBtn').disabled = true;
-    document.getElementById('joinBtn').textContent = 'Connecting...';
-
-    connect();
-    ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'join', name: playerName }));
-        document.getElementById('joinBtn').disabled = false;
-        document.getElementById('joinBtn').textContent = 'Join Game';
-    };
-}
-
-document.getElementById('nameInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') joinGame();
-});
-
-// ============================
-// LOBBY ACTIONS
-// ============================
-function updateLobbyPlayers(players) {
-    const list = document.getElementById('playerList');
-    list.innerHTML = '';
-
-    players.forEach(p => {
-        if (playerColorMap[p.id] === undefined) {
-            playerColorMap[p.id] = colorCounter++ % PLAYER_COLORS.length;
-        }
-    });
-
-    const MAX = 4;
-    for (let i = 0; i < MAX; i++) {
-        const p = players[i];
-        const slot = document.createElement('div');
-        if (p) {
-            slot.className = 'player-slot';
-            const colorIdx = playerColorMap[p.id] ?? 0;
-            slot.innerHTML = `
-                <div class="player-icon" style="border-color:${PLAYER_COLORS[colorIdx]};color:${PLAYER_COLORS[colorIdx]}">
-                    ${p.name.charAt(0).toUpperCase()}
-                </div>
-                <div class="player-name-lobby">${escHtml(p.name)}</div>
-                ${p.id == playerId ? '<div class="you-tag">YOU</div>' : ''}
-            `;
-        } else {
-            slot.className = 'slot-empty';
-            slot.textContent = `[ Player ${i+1} ]`;
-        }
-        list.appendChild(slot);
-    }
-}
-
-function startGame() {
-    if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: 'start_game' }));
-    }
-}
-
-function leaveRoom() {
-    if (ws) ws.close();
-    showScreen('menuScreen');
-}
-
-// ============================
-// GAME STATE SYNC
-// ============================
-function syncGameState(data) {
-    gameState.zombies = data.zombies;
-    gameState.bullets = data.bullets;
-
-    for (let id in data.players) {
-        if (playerColorMap[id] === undefined) {
-            playerColorMap[id] = colorCounter++ % PLAYER_COLORS.length;
-        }
-    }
-
-    for (let id in data.players) {
-        if (id != playerId) {
-            gameState.players[id] = data.players[id];
-        } else {
-            const serverSelf = data.players[id];
-            if (!gameState.players[id]) {
-                gameState.players[id] = serverSelf;
-            } else {
-                gameState.players[id].health = serverSelf.health;
-                gameState.players[id].score = serverSelf.score;
-                gameState.players[id].alive = serverSelf.alive;
-                gameState.players[id].name = serverSelf.name;
-
-                const dist = Math.hypot(
-                    gameState.players[id].x - serverSelf.x,
-                    gameState.players[id].y - serverSelf.y
-                );
-                if (dist > 60) {
-                    gameState.players[id].x = serverSelf.x;
-                    gameState.players[id].y = serverSelf.y;
-                }
-            }
-        }
-    }
-
-    for (let id in gameState.players) {
-        if (!data.players[id]) delete gameState.players[id];
-    }
-
-    const me = gameState.players[playerId];
-    if (me) {
-        document.getElementById('hudScore').textContent = me.score;
-        document.getElementById('hudHp').textContent = Math.max(0, Math.ceil(me.health));
-        document.getElementById('deathOverlay').classList.toggle('visible', !me.alive);
-    }
-}
-
-// ============================
-// INPUT
-// ============================
-const keys = {};
-window.addEventListener('keydown', e => {
-    keys[e.code] = true;
-    if (document.getElementById('gameScreen').classList.contains('active')) {
-        e.preventDefault();
-    }
-});
-window.addEventListener('keyup', e => { keys[e.code] = false; });
-
-function checkWallCollision(x, y, size) {
-    return walls.some(w => x < w.x + w.w && x + size > w.x && y < w.y + w.h && y + size > w.y);
-}
-
-canvas.addEventListener('mousedown', (e) => {
-    const me = gameState.players[playerId];
-    if (!me || !me.alive) return;
-    const rect = canvas.getBoundingClientRect();
-    // Convert screen click to world coords
-    const worldX = (e.clientX - rect.left) * (CANVAS_W / rect.width) + camX;
-    const worldY = (e.clientY - rect.top)  * (CANVAS_H / rect.height) + camY;
-    let dx = worldX - (me.x + 10);
-    let dy = worldY - (me.y + 10);
-    const dist = Math.hypot(dx, dy);
-    if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: 'shoot', x: me.x + 10, y: me.y + 10, dx: dx / dist, dy: dy / dist }));
-    }
-});
-
-function movePlayer() {
-    const me = gameState.players[playerId];
-    if (!me || !me.alive || !ws || ws.readyState !== 1) return;
-
-    let dx = 0, dy = 0;
-    const speed = 3;
-    if (keys['KeyW'] || keys['ArrowUp'])    dy -= speed;
-    if (keys['KeyS'] || keys['ArrowDown'])  dy += speed;
-    if (keys['KeyA'] || keys['ArrowLeft'])  dx -= speed;
-    if (keys['KeyD'] || keys['ArrowRight']) dx += speed;
-
-    if (dx !== 0 || dy !== 0) {
-        if (!checkWallCollision(me.x + dx, me.y, 20)) me.x = Math.max(0, Math.min(GAME_W - 20, me.x + dx));
-        if (!checkWallCollision(me.x, me.y + dy, 20)) me.y = Math.max(0, Math.min(GAME_H - 20, me.y + dy));
-        ws.send(JSON.stringify({ type: 'move', dx, dy }));
-    }
-}
-
-// ============================
-// RENDER
-// ============================
-function draw() {
-    updateCamera();
-    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-
-    ctx.save();
-    ctx.translate(-camX, -camY);
-
-    // Grid background (samo vidljivi deo)
-    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-    ctx.lineWidth = 1;
-    const gx0 = Math.floor(camX / 40) * 40;
-    const gy0 = Math.floor(camY / 40) * 40;
-    for (let x = gx0; x < camX + CANVAS_W; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, camY); ctx.lineTo(x, camY + CANVAS_H); ctx.stroke();
-    }
-    for (let y = gy0; y < camY + CANVAS_H; y += 40) {
-        ctx.beginPath(); ctx.moveTo(camX, y); ctx.lineTo(camX + CANVAS_W, y); ctx.stroke();
-    }
-
-    // Map border
-    ctx.strokeStyle = '#3a3f4d';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(0, 0, GAME_W, GAME_H);
-
-    // Walls
-    walls.forEach(w => {
-        ctx.fillStyle = '#2a2d35';
-        ctx.fillRect(w.x, w.y, w.w, w.h);
-        ctx.strokeStyle = '#4a5060';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(w.x, w.y, w.w, w.h);
-    });
-
-    // Zombies
-    gameState.zombies.forEach(z => {
-        ctx.fillStyle = '#ff3c3c';
-        ctx.fillRect(z.x, z.y, 20, 20);
-        ctx.fillStyle = '#ffff00';
-        ctx.fillRect(z.x + 4, z.y + 5, 4, 4);
-        ctx.fillRect(z.x + 12, z.y + 5, 4, 4);
-    });
-
-    // Bullets
-    gameState.bullets.forEach(b => {
-        ctx.fillStyle = '#c8f135';
-        ctx.shadowColor = '#c8f135';
-        ctx.shadowBlur = 6;
-        ctx.fillRect(b.x - 2, b.y - 2, 5, 5);
-        ctx.shadowBlur = 0;
-    });
-
-    // Players
-    Object.values(gameState.players).forEach(p => {
-        if (!p.alive) return;
-        const colorIdx = playerColorMap[p.id] ?? 0;
-        const color = PLAYER_COLORS[colorIdx];
-        const isMe = p.id == playerId;
-
-        ctx.fillStyle = color;
-        ctx.fillRect(p.x, p.y, 20, 20);
-
-        if (isMe) {
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(p.x, p.y, 20, 20);
-        }
-
-        // Health bar
-        ctx.fillStyle = '#1a1d24';
-        ctx.fillRect(p.x - 5, p.y - 12, 30, 5);
-        ctx.fillStyle = p.health > 50 ? '#81c784' : p.health > 25 ? '#ffb74d' : '#ef5350';
-        ctx.fillRect(p.x - 5, p.y - 12, (p.health / 100) * 30, 5);
-
-        // Name
-        ctx.font = '11px "Share Tech Mono"';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = isMe ? 'white' : color;
-        ctx.fillText(p.name, p.x + 10, p.y - 16);
-        ctx.textAlign = 'left';
-    });
-
-    ctx.restore();
-
-    requestAnimationFrame(draw);
-}
-
-function escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-setInterval(movePlayer, 1000 / 60);
-draw();
-</script>
-</body>
+    <script type="module" src="./connection/gameState.js"></script>
+    <script type="module" src="./connection/websocketManager.js"></script>
+    <script type="module" src="./UI/screenManager.js"></script>
+    <script type="module" src="./UI/menu.js"></script>
+    <script type="module" src="./UI/lobby.js"></script>
+    <script type="module" src="./UI/draw.js"></script>
+    <script type="module" src="./logic/input.js"></script>
+  </body>
+</html>
