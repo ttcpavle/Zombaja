@@ -19,11 +19,35 @@ export const state = {
   colorCounter: 0,
   currentPing: null,
   pingInterval: null,
+  currentWave: 1,
+  waveOverlayTimeout: null,
 };
+
+function showWaveOverlay(waveNumber) {
+  const overlay = document.getElementById("waveOverlay");
+  if (!overlay) return;
+
+  const title = overlay.querySelector(".death-title");
+  const sub = overlay.querySelector(".death-sub");
+  if (title) title.textContent = `wave ${waveNumber}`;
+  if (sub) sub.innerHTML = `survive<span class="waiting-dots"></span>`;
+
+  overlay.classList.add("visible");
+  if (state.waveOverlayTimeout) clearTimeout(state.waveOverlayTimeout);
+  state.waveOverlayTimeout = setTimeout(() => {
+    overlay.classList.remove("visible");
+  }, 2200);
+}
 
 export function syncGameState(data) {
   state.gameState.zombies = data.zombies;
   state.gameState.bullets = data.bullets;
+  if (typeof data.wave === "number" && data.wave !== state.currentWave) {
+    state.currentWave = data.wave;
+    showWaveOverlay(data.wave);
+  } else if (typeof data.wave === "number") {
+    state.currentWave = data.wave;
+  }
 
   for (let id in data.players) {
     if (state.playerColorMap[id] === undefined) {

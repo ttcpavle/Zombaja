@@ -4,15 +4,133 @@ import { broadcastRoomState } from "./broadcast.js";
 import { processShooting } from "./guns.js";
 import { SPAWN_POINTS } from "../world/map.js";
 
+function logBase(value, base) {
+  return Math.log(value) / Math.log(base);
+}
+
+// Wave configuration: maps wave number to spawn behavior
+function getWaveConfig(waveNum) {
+  const baseDefaults = Math.max(5, logBase(waveNum + 2, 1.06) + waveNum / 5);
+  const baseRunners = Math.max(0, logBase(waveNum - 1, 1.04) + waveNum / 5);
+  const baseTanks = Math.max(0, logBase(waveNum - 8, 1.02) + waveNum / 10);
+  const baseExplodes = Math.max(0, logBase(waveNum - 19, 1.05) + waveNum / 2);
+
+  return {
+    zombies: {
+      default: Math.max(1, baseDefaults),
+      runner: baseRunners,
+      tank: baseTanks,
+      explode: baseExplodes,
+    },
+    spawnInterval: Math.max(200, 800 - (waveNum - 1) * 20),
+  };
+}
+
+function buildWaveSpawnQueue(waveNum) {
+  const config = getWaveConfig(waveNum);
+  const queue = [];
+
+  for (const [typeName, count] of Object.entries(config.zombies)) {
+    for (let i = 0; i < count; i++) {
+      const zombieType = zombieTypes.find((z) => z.name === typeName);
+      if (zombieType) {
+        queue.push(zombieType);
+      }
+    }
+  }
+
+  // Shuffle queue for variety
+  for (let i = queue.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [queue[i], queue[j]] = [queue[j], queue[i]];
+  }
+
+  return queue;
+}
+
+function clearWaveTimers(room) {
+  if (room.waveSpawnTimer) {
+    clearTimeout(room.waveSpawnTimer);
+    room.waveSpawnTimer = null;
+  }
+  if (room.waveTransitionTimer) {
+    clearTimeout(room.waveTransitionTimer);
+    room.waveTransitionTimer = null;
+  }
+  if (room.waveCompletionTimer) {
+    clearTimeout(room.waveCompletionTimer);
+    room.waveCompletionTimer = null;
+  }
+}
+
+function spawnNextZombie(room) {
+  if (!room || room.state !== "playing" || !room.waveActive) return;
+  if (!room.waveSpawnQueue || room.waveSpawnQueue.length === 0) {
+    room.waveSpawningComplete = true;
+    room.waveSpawningEndedAt = Date.now();
+    return;
+  }
+
+  const zombieType = room.waveSpawnQueue.shift();
+  spawnZombie(room, zombieType);
+  room.waveSpawned += 1;
+
+  const config = getWaveConfig(room.wave);
+  room.waveSpawnTimer = setTimeout(() => {
+    spawnNextZombie(room);
+  }, config.spawnInterval);
+}
+
+function startWave(room) {
+  if (!room || room.state !== "playing") return;
+
+  clearWaveTimers(room);
+  room.waveActive = true;
+  room.waveSpawningComplete = false;
+  room.waveSpawned = 0;
+  room.waveSpawnQueue = buildWaveSpawnQueue(room.wave);
+  room.waveTotal = room.waveSpawnQueue.length;
+  room.waveSpawningEndedAt = null;
+
+  spawnNextZombie(room);
+}
+
+function checkWaveProgress(room) {
+  if (!room || room.state !== "playing") return;
+  if (!room.waveActive) return;
+
+  // Still spawning
+  if (!room.waveSpawningComplete) return;
+
+  // Spawning is done, check if we can end the wave
+  const timeSinceSpawningEnded =
+    Date.now() - (room.waveSpawningEndedAt || Date.now());
+  const canEndWave =
+    room.zombies.length === 0 || timeSinceSpawningEnded >= 20000;
+
+  if (!canEndWave) return;
+
+  // Wave complete
+  room.waveActive = false;
+  room.waveSpawningComplete = false;
+  clearWaveTimers(room);
+
+  room.waveTransitionTimer = setTimeout(() => {
+    if (!room || room.state !== "playing") return;
+    room.wave += 1;
+    startWave(room);
+  }, 1500);
+}
+
 export function startGameLoop(room) {
   if (room.gameLoopInterval) clearInterval(room.gameLoopInterval);
-  if (room.zombieSpawnInterval) clearInterval(room.zombieSpawnInterval);
+  clearWaveTimers(room);
 
   let lastTime = Date.now();
 
   room.gameLoopInterval = setInterval(() => {
     const now = Date.now();
-    const dt = now - lastTime; // seconds
+    const dt = now - lastTime;
     lastTime = now;
 
     if (Object.keys(room.players).length === 0) return;
@@ -20,32 +138,18 @@ export function startGameLoop(room) {
     updateZombies(room);
     updateBullets(room, dt);
     checkCollisions(room);
+    checkWaveProgress(room);
     broadcastRoomState(room);
   }, 30);
 
-  room.spawnCount = 0.5;
+  room.spawnCount = 0;
   room.spawnDelay = 3000;
   room.wave = 1;
-
-  const scheduleSpawn = () => {
-    if (!room || Object.keys(room.players).length === 0) {
-      room.zombies = [];
-      room.zombieSpawnInterval = null;
-      return;
-    }
-
-    for (let i = 0; i < room.spawnCount; i++) {
-      const zombieType =
-        zombieTypes[Math.floor(Math.random() * zombieTypes.length)];
-      spawnZombie(room, zombieType);
-    }
-
-    room.spawnCount = Math.min(room.spawnCount + 0.06, 12.52);
-    room.spawnDelay = Math.max(300, 3000 - room.spawnCount * 120);
-    room.zombieSpawnInterval = setTimeout(scheduleSpawn, room.spawnDelay);
-  };
-
-  room.zombieSpawnInterval = setTimeout(scheduleSpawn, room.spawnDelay);
+  room.waveActive = false;
+  room.waveSpawningComplete = false;
+  room.waveSpawned = 0;
+  room.waveTotal = 0;
+  startWave(room);
 }
 
 export function stopGameLoop(room) {
@@ -53,10 +157,7 @@ export function stopGameLoop(room) {
     clearInterval(room.gameLoopInterval);
     room.gameLoopInterval = null;
   }
-  if (room.zombieSpawnInterval) {
-    clearTimeout(room.zombieSpawnInterval);
-    room.zombieSpawnInterval = null;
-  }
+  clearWaveTimers(room);
 }
 
 export function killPlayer(room, player) {
