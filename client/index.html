@@ -75,6 +75,30 @@
 
     <!-- ====== GAME ====== -->
     <div id="gameScreen" class="screen">
+      <div id="audioSettings" class="audio-settings">
+        <div class="audio-setting">
+          <label for="sfxVolume">SFX</label>
+          <input
+            id="sfxVolume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value="0.8"
+          />
+        </div>
+        <div class="audio-setting">
+          <label for="musicVolume">Music</label>
+          <input
+            id="musicVolume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value="0.6"
+          />
+        </div>
+      </div>
       <div id="gameWrapper">
         <canvas id="game" width="1280" height="720" tabindex="1"></canvas>
         <div id="hud">

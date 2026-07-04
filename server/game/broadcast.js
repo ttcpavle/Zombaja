@@ -8,6 +8,13 @@ export function broadcastToRoom(room, message) {
   });
 }
 
+export function sendToPlayer(playerId, message) {
+  const ws = playerWs[playerId];
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify(message));
+  }
+}
+
 export function broadcastRoomState(room) {
   broadcastToRoom(room, {
     type: "state",

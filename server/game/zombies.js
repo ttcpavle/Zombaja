@@ -2,6 +2,7 @@ import { GAME_WIDTH, GAME_HEIGHT } from "../config/constants.js";
 import { checkWallCollision } from "../utils.js";
 import { spawnExplosion } from "./guns.js";
 import { killPlayer } from "./gameLoop.js";
+import { broadcastToRoom, sendToPlayer } from "./broadcast.js";
 
 export let zombieTypes = [
   {
@@ -164,6 +165,10 @@ export function updateZombies(room) {
         killZombie(room, z);
       } else {
         nearest.health -= 5;
+        sendToPlayer(nearest.id, {
+          type: "player_damage",
+          playerId: nearest.id,
+        });
       }
 
       z.xVel -= nearest.x - z.x;
@@ -202,6 +207,11 @@ export function killZombie(room, zombieOrIndex) {
     );
   }
   if (index !== -1) {
+    broadcastToRoom(room, {
+      type: "zombie_death",
+      x: room.zombies[index].x,
+      y: room.zombies[index].y,
+    });
     room.zombies.splice(index, 1);
   }
 }

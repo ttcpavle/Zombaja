@@ -113,6 +113,26 @@ function draw() {
     ctx.textAlign = "left";
   });
 
+  const now = Date.now();
+  state.hitIndicators = state.hitIndicators.filter((indicator) => {
+    const elapsed = now - indicator.createdAt;
+    if (elapsed > indicator.duration) return false;
+
+    const alpha = 1 - elapsed / indicator.duration;
+    const floatY = indicator.y - elapsed * 0.05;
+    const color = indicator.killed
+      ? `rgba(255,205,0,${alpha})`
+      : `rgba(255,255,255,${alpha})`;
+    ctx.font = '18px "Share Tech Mono"';
+    ctx.textAlign = "center";
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = `rgba(0,0,0,${alpha})`;
+    ctx.fillStyle = color;
+    ctx.strokeText(indicator.text, indicator.x, floatY);
+    ctx.fillText(indicator.text, indicator.x, floatY);
+    return true;
+  });
+
   ctx.restore();
 
   requestAnimationFrame(draw);

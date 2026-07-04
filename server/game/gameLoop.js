@@ -1,6 +1,6 @@
 import { updateZombies, spawnZombie, zombieTypes } from "./zombies.js";
 import { updateBullets, checkCollisions } from "./bullets.js";
-import { broadcastRoomState } from "./broadcast.js";
+import { broadcastRoomState, broadcastToRoom } from "./broadcast.js";
 import { processShooting } from "./guns.js";
 import { SPAWN_POINTS } from "../world/map.js";
 
@@ -114,6 +114,19 @@ function checkWaveProgress(room) {
   room.waveActive = false;
   room.waveSpawningComplete = false;
   clearWaveTimers(room);
+
+  const bonus = 2000 * room.wave;
+  Object.values(room.players).forEach((player) => {
+    if (player.alive) {
+      player.score += bonus;
+    }
+  });
+
+  broadcastToRoom(room, {
+    type: "wave_complete",
+    wave: room.wave,
+    bonus,
+  });
 
   room.waveTransitionTimer = setTimeout(() => {
     if (!room || room.state !== "playing") return;

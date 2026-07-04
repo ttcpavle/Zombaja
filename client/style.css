@@ -384,32 +384,39 @@ canvas {
   font-size: 12px;
   letter-spacing: 2px;
   color: var(--muted);
+  pointer-events: none;
 }
 
 .hud-box span {
   color: var(--accent);
   font-size: 16px;
+  pointer-events: none;
 }
 
 .hud-box.hud-ping {
   min-width: 90px;
   text-align: right;
+  pointer-events: none;
 }
 
 .hud-box.hud-ping span {
   color: var(--accent);
+  pointer-events: none;
 }
 
 .hud-box.hud-ping.ping-good span {
   color: #74e56d;
+  pointer-events: none;
 }
 
 .hud-box.hud-ping.ping-medium span {
   color: #ffde57;
+  pointer-events: none;
 }
 
 .hud-box.hud-ping.ping-bad span {
   color: #ff6b6b;
+  pointer-events: none;
 }
 
 #waveOverlay {
@@ -421,6 +428,7 @@ canvas {
   justify-content: center;
   flex-direction: column;
   gap: 12px;
+  pointer-events: none;
 }
 
 #waveOverlay.visible {
@@ -436,6 +444,7 @@ canvas {
   justify-content: center;
   flex-direction: column;
   gap: 12px;
+  pointer-events: none;
 }
 
 #deathOverlay.visible {
@@ -450,6 +459,7 @@ canvas {
   letter-spacing: 4px;
   text-transform: uppercase;
   text-shadow: 0 0 30px rgba(255, 60, 60, 0.5);
+  pointer-events: none;
 }
 
 .death-sub {
@@ -457,6 +467,7 @@ canvas {
   letter-spacing: 4px;
   color: var(--muted);
   text-transform: uppercase;
+  pointer-events: none;
 }
 
 /* Controls hint */
@@ -470,6 +481,37 @@ canvas {
   color: var(--muted);
   pointer-events: none;
   white-space: nowrap;
+  pointer-events: none;
+}
+
+.audio-settings {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  background: rgba(17, 19, 24, 0.92);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 170px;
+}
+
+.audio-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.audio-setting input {
+  width: 92px;
+  accent-color: var(--accent);
 }
 
 #weapon {

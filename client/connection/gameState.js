@@ -21,16 +21,190 @@ export const state = {
   pingInterval: null,
   currentWave: 1,
   waveOverlayTimeout: null,
+  hitIndicators: [],
+  audioContext: null,
+  audioBuffers: {},
+  audioLoaded: false,
+  sfxVolume: 0.8,
+  musicVolume: 0.6,
+  musicAudio: null,
 };
 
-function showWaveOverlay(waveNumber) {
+const audioAssetPaths = {
+  pistol: "./resources/audio/pistol.wav",
+  shotgun: "./resources/audio/shotgun.ogg",
+  rifle: "./resources/audio/rifle.ogg",
+  granata: "./resources/audio/granata.ogg",
+  explosion: "./resources/audio/explosion.ogg",
+  zombieHit: "./resources/audio/zombieHit.ogg",
+  zombieDeath: "./resources/audio/zombieDeath.ogg",
+  playerDamage: "./resources/audio/playerDamage.ogg",
+  waveSound: "./resources/audio/waveSound.mp3",
+  music1: "./resources/audio/music1.mp3",
+};
+
+function ensureAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!state.audioContext) state.audioContext = new AudioContextClass();
+  return state.audioContext;
+}
+
+export async function preloadAudioAssets() {
+  const ctx = ensureAudioContext();
+  if (!ctx) return;
+
+  const entries = Object.entries(audioAssetPaths);
+  await Promise.all(
+    entries.map(async ([key, url]) => {
+      try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        state.audioBuffers[key] = await ctx.decodeAudioData(arrayBuffer);
+      } catch (err) {
+        console.warn(`Failed to load audio asset ${url}:`, err);
+      }
+    }),
+  );
+  state.audioLoaded = true;
+}
+
+export function resumeAudioContext() {
+  const ctx = ensureAudioContext();
+  if (!ctx) return;
+  if (ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
+  startBackgroundMusic();
+}
+
+export function setSfxVolume(value) {
+  state.sfxVolume = Math.max(0, Math.min(1, value));
+}
+
+export function setMusicVolume(value) {
+  state.musicVolume = Math.max(0, Math.min(1, value));
+  if (state.musicAudio) state.musicAudio.volume = state.musicVolume;
+}
+
+export function startBackgroundMusic() {
+  if (!state.musicAudio) {
+    state.musicAudio = new Audio("./resources/audio/music1.mp3");
+    state.musicAudio.loop = true;
+    state.musicAudio.volume = state.musicVolume;
+    state.musicAudio.preload = "auto";
+  }
+  if (state.musicAudio.paused) {
+    const playPromise = state.musicAudio.play();
+    if (playPromise) playPromise.catch(() => {});
+  }
+}
+
+function setupAudioControls() {
+  const sfxInput = document.getElementById("sfxVolume");
+  const musicInput = document.getElementById("musicVolume");
+
+  if (sfxInput) {
+    sfxInput.value = state.sfxVolume;
+    sfxInput.addEventListener("input", (e) =>
+      setSfxVolume(parseFloat(e.target.value)),
+    );
+  }
+
+  if (musicInput) {
+    musicInput.value = state.musicVolume;
+    musicInput.addEventListener("input", (e) =>
+      setMusicVolume(parseFloat(e.target.value)),
+    );
+  }
+}
+
+function playGunshotSound(data) {
+  playSound(data, data.weapon || "pistol", 0.4);
+}
+
+function playExplosionSound(data) {
+  playSound(data, "explosion", 0.5);
+}
+
+function playZombieHitSound(data) {
+  playSound(data, "zombieHit", 0.4);
+}
+
+function playZombieDeathSound(data) {
+  playSound(data, "zombieDeath", 0.45);
+}
+
+function playPlayerDamageSound() {
+  playGlobalSound("playerDamage", 0.35);
+}
+
+function playWaveSound() {
+  playGlobalSound("waveSound", 0.6);
+}
+
+function playGlobalSound(soundKey, baseVolume = 1, pitch = 1) {
+  const ctx = ensureAudioContext();
+  if (!ctx || ctx.state === "suspended") return;
+
+  const buffer = state.audioBuffers[soundKey];
+  if (!buffer) return;
+
+  const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
+
+  source.buffer = buffer;
+  source.playbackRate.value = pitch;
+  gain.gain.value =
+    state.sfxVolume * baseVolume * (0.85 + Math.random() * 0.15);
+
+  source.connect(gain);
+  gain.connect(ctx.destination);
+  source.start();
+}
+
+function playSound(data, soundKey, baseVolume = 1) {
+  const me = state.gameState.players[state.playerId];
+  if (!me) return;
+
+  const shooter = state.gameState.players[data.ownerId];
+  const shooterX = shooter ? shooter.x : data.x;
+  const shooterY = shooter ? shooter.y : data.y;
+  const dx = shooterX - me.x;
+  const dy = shooterY - me.y;
+  const distance = Math.max(1, Math.hypot(dx, dy));
+  const volume = Math.max(0.05, Math.min(1, 1 - distance / 800)) * baseVolume;
+  const pitch = 1 + (Math.random() - 0.5) * 0.14;
+
+  const ctx = ensureAudioContext();
+  if (!ctx || ctx.state === "suspended") return;
+
+  const buffer = state.audioBuffers[soundKey];
+  if (!buffer) return;
+
+  const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
+
+  source.buffer = buffer;
+  source.playbackRate.value = pitch;
+  gain.gain.value = volume * state.sfxVolume * (0.85 + Math.random() * 0.15);
+
+  source.connect(gain);
+  gain.connect(ctx.destination);
+  source.start();
+}
+
+setupAudioControls();
+preloadAudioAssets().catch(() => {});
+
+function showWaveOverlay(waveNumber, subtitle = "survive") {
   const overlay = document.getElementById("waveOverlay");
   if (!overlay) return;
 
   const title = overlay.querySelector(".death-title");
   const sub = overlay.querySelector(".death-sub");
   if (title) title.textContent = `wave ${waveNumber}`;
-  if (sub) sub.innerHTML = `survive<span class="waiting-dots"></span>`;
+  if (sub) sub.innerHTML = `${subtitle}<span class="waiting-dots"></span>`;
 
   overlay.classList.add("visible");
   if (state.waveOverlayTimeout) clearTimeout(state.waveOverlayTimeout);
@@ -39,12 +213,48 @@ function showWaveOverlay(waveNumber) {
   }, 2200);
 }
 
+export function addHitIndicator(data) {
+  state.hitIndicators.push({
+    text: data.text,
+    x: data.x,
+    y: data.y,
+    createdAt: Date.now(),
+    duration: 1200,
+    killed: data.killed,
+  });
+}
+
+export function handleWaveComplete(data) {
+  showWaveOverlay(data.wave, `+${data.bonus}`);
+}
+
+export function handleGunshot(data) {
+  playGunshotSound(data);
+}
+
+export function handleZombieHit(data) {
+  playZombieHitSound(data);
+}
+
+export function handleZombieDeath(data) {
+  playZombieDeathSound(data);
+}
+
+export function handleExplosion(data) {
+  playExplosionSound(data);
+}
+
+export function handlePlayerDamage() {
+  playPlayerDamageSound();
+}
+
 export function syncGameState(data) {
   state.gameState.zombies = data.zombies;
   state.gameState.bullets = data.bullets;
   if (typeof data.wave === "number" && data.wave !== state.currentWave) {
     state.currentWave = data.wave;
     showWaveOverlay(data.wave);
+    playWaveSound();
   } else if (typeof data.wave === "number") {
     state.currentWave = data.wave;
   }
