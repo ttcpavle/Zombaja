@@ -54,3 +54,5 @@ export const SPAWN_POINTS = [
     { x: 60,   y: 920 },
     { x: 1520, y: 920 }
 ];
+
+export const SHOP_ZONE = { x: 670, y: 220, w: 180, h: 180 }; 

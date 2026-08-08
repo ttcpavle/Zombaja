@@ -1,6 +1,7 @@
 import { CANVAS_W, CANVAS_H, GAME_W, GAME_H } from "../constants.js";
 import { state, resumeAudioContext } from "../connection/gameState.js";
 import { camX, camY } from "../UI/draw.js";
+import { isInShopZone, isShopOpen, openShop, closeShop, updateShopPrompt } from "../UI/shop.js";
 
 const canvas = document.getElementById("game");
 const keys = {};
@@ -9,6 +10,20 @@ const mouseState = {
   x: 0,
   y: 0,
 };
+
+let spaceDown = false;
+let firing = false;
+
+function updateFiringState() {
+  const shouldFire = mouseState.down || spaceDown;
+  if (shouldFire && !firing) {
+    firing = true;
+    sendShootCommand("start");
+  } else if (!shouldFire && firing) {
+    firing = false;
+    sendShootCommand("stop");
+  }
+}
 
 window.addEventListener("keydown", (e) => {
   keys[e.code] = true;
@@ -54,7 +69,7 @@ function sendShootCommand(action) {
   state.ws.send(JSON.stringify(message));
 }
 
-var selectedWeapon = 1;
+var selectedWeapon = 0;//bilo je 1 kao shotgun pa sam stavio na 0 da bude pistol
 
 function scroolWeapon(direction) {
   if (direction === "up") {
@@ -93,7 +108,7 @@ function changeWeapon() {
 canvas.addEventListener("mousemove", (e) => {
   mouseState.x = e.clientX;
   mouseState.y = e.clientY;
-  if (mouseState.down) sendShootCommand("update");
+  if (firing) sendShootCommand("update");
 });
 
 canvas.addEventListener("mousedown", (e) => {
@@ -103,26 +118,39 @@ canvas.addEventListener("mousedown", (e) => {
   mouseState.down = true;
   mouseState.x = e.clientX;
   mouseState.y = e.clientY;
-  sendShootCommand("start");
+  updateFiringState();
 });
 
-canvas.addEventListener("mouseup", () => {
+/*canvas.addEventListener("mouseup", () => {
   if (!mouseState.down) return;
   mouseState.down = false;
   sendShootCommand("stop");
-});
+});*///ovaj ovde nije potreban jer ima dole i window a dodato je i ovo za mouseleave
 
 canvas.addEventListener("mouseleave", () => {
-  if (!mouseState.down) return;
   mouseState.down = false;
-  sendShootCommand("stop");
+  updateFiringState();
 });
 
 window.addEventListener("mouseup", () => {
-  if (!mouseState.down) return;
   mouseState.down = false;
-  sendShootCommand("stop");
+  updateFiringState();
 });
+
+window.addEventListener("keydown", (e) => {
+  if (e.code !== "Space") return;
+  e.preventDefault();
+  if (e.repeat) return;
+  resumeAudioContext();
+  spaceDown = true;
+  updateFiringState();
+});
+
+window.addEventListener("keyup", (e) => {
+  if (e.code !== "Space") return;
+  spaceDown = false;
+  updateFiringState();
+})
 
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
@@ -141,30 +169,30 @@ canvas.addEventListener(
   { passive: false },
 );
 
-// Number keys 1-5
+// 1-4 za oruzje i e i esc za shop
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
 
+  if (e.code === "KeyE") {
+    if (!isShopOpen() && isInShopZone()) openShop();
+    return;
+  }
+  if (e.code === "Escape") {
+    if (isShopOpen()) closeShop();
+    return;
+  }
+
   switch (e.key) {
-    case "1":
-      setWeapon(1);
-      break;
-    case "2":
-      setWeapon(2);
-      break;
-    case "3":
-      setWeapon(3);
-      break;
-    case "4":
-      setWeapon(4);
-      break;
-    /* case '5':
-            setWeapon(5);
-            break;*/
+    case "1": setWeapon(1); break;
+    case "2": setWeapon(2); break;
+    case "3": setWeapon(3); break;
+    case "4": setWeapon(4); break;
   }
 });
 
 function movePlayer() {
+  updateShopPrompt();
+  if (isShopOpen()) return;   // dok je shop otvoren, ne saljemo move
   const me = state.gameState.players[state.playerId];
   if (!me || !me.alive || !state.ws || state.ws.readyState !== 1) return;
 

@@ -14,6 +14,8 @@ export const state = {
   playerName: "",
 
   walls: [],
+  shopZone: null,
+  weaponConfig: {},
   gameState: { players: {}, zombies: [], bullets: [] },
   playerColorMap: {},
   colorCounter: 0,
@@ -28,6 +30,7 @@ export const state = {
   sfxVolume: 0.8,
   musicVolume: 0.6,
   musicAudio: null,
+  gameStartedAt: null,
 };
 
 const audioAssetPaths = {
@@ -248,9 +251,31 @@ export function handlePlayerDamage() {
   playPlayerDamageSound();
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderLeaderboard(players) {
+  const el = document.getElementById("leaderboard");
+  if (!el) return;
+  const sorted = Object.values(players).sort((a, b) => b.score - a.score);
+  el.innerHTML =
+    '<div class="lb-title">Leaderboard</div>' +
+    sorted
+      .map((p) => {
+        const isMe = p.id == state.playerId;
+        return `<div class="lb-row${isMe ? " me" : ""}"><span>${escapeHtml(p.name)}</span><span>${p.score}</span></div>`;
+      })
+      .join("");
+}
+
 export function syncGameState(data) {
   state.gameState.zombies = data.zombies;
   state.gameState.bullets = data.bullets;
+  if (typeof data.startedAt === "number") state.gameStartedAt = data.startedAt;
   if (typeof data.wave === "number" && data.wave !== state.currentWave) {
     state.currentWave = data.wave;
     showWaveOverlay(data.wave);
@@ -277,13 +302,8 @@ export function syncGameState(data) {
         state.gameState.players[id].score = serverSelf.score;
         state.gameState.players[id].alive = serverSelf.alive;
         state.gameState.players[id].name = serverSelf.name;
-        /*if (state.gameState.players[id].name !== serverSelf.name) {
-          document
-            .getElementById("waveOverlay")
-            .classList.toggle("visible", true);
-            /////dodaj ovde da nestane isto posle 2 sekunde
-        }*/
-        //state.gameState.players[id].wave = serverSelf.wave;
+        state.gameState.players[id].currency = serverSelf.currency;
+        state.gameState.players[id].weapons = serverSelf.weapons;
 
         const dist = Math.hypot(
           state.gameState.players[id].x - serverSelf.x,
@@ -301,9 +321,12 @@ export function syncGameState(data) {
     if (!data.players[id]) delete state.gameState.players[id];
   }
 
+  renderLeaderboard(data.players);
+
   const me = state.gameState.players[state.playerId];
   if (me) {
     document.getElementById("hudScore").textContent = me.score;
+    document.getElementById("hudCurrency").textContent = me.currency;
     document.getElementById("hudHp").textContent = Math.max(
       0,
       Math.ceil(me.health),

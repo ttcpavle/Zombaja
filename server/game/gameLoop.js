@@ -1,4 +1,4 @@
-import { updateZombies, spawnZombie, zombieTypes } from "./zombies.js";
+import { updateZombies, spawnZombie, zombieTypes, updateFireZones } from "./zombies.js";
 import { updateBullets, checkCollisions } from "./bullets.js";
 import { broadcastRoomState, broadcastToRoom } from "./broadcast.js";
 import { processShooting } from "./guns.js";
@@ -8,12 +8,11 @@ function logBase(value, base) {
   return Math.log(value) / Math.log(base);
 }
 
-// Wave configuration: maps wave number to spawn behavior
 function getWaveConfig(waveNum) {
   const baseDefaults = Math.max(5, logBase(waveNum + 2, 1.06) + waveNum / 5);
   const baseRunners = Math.max(0, logBase(waveNum - 1, 1.04) + waveNum / 5);
-  const baseTanks = Math.max(0, logBase(waveNum - 8, 1.02) + waveNum / 10);
-  const baseExplodes = Math.max(0, logBase(waveNum - 19, 1.05) + waveNum / 2);
+  const baseTanks = Math.max(0, logBase(waveNum - 8, 1.02) + waveNum / 10);//8 umesto 2 je bilo
+  const baseExplodes = Math.max(0, logBase(waveNum - 19, 1.05) + waveNum / 2);//ovde 19
 
   return {
     zombies: {
@@ -39,7 +38,6 @@ function buildWaveSpawnQueue(waveNum) {
     }
   }
 
-  // Shuffle queue for variety
   for (let i = queue.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [queue[i], queue[j]] = [queue[j], queue[i]];
@@ -99,10 +97,8 @@ function checkWaveProgress(room) {
   if (!room || room.state !== "playing") return;
   if (!room.waveActive) return;
 
-  // Still spawning
   if (!room.waveSpawningComplete) return;
 
-  // Spawning is done, check if we can end the wave
   const timeSinceSpawningEnded =
     Date.now() - (room.waveSpawningEndedAt || Date.now());
   const canEndWave =
@@ -110,7 +106,6 @@ function checkWaveProgress(room) {
 
   if (!canEndWave) return;
 
-  // Wave complete
   room.waveActive = false;
   room.waveSpawningComplete = false;
   clearWaveTimers(room);
@@ -119,6 +114,7 @@ function checkWaveProgress(room) {
   Object.values(room.players).forEach((player) => {
     if (player.alive) {
       player.score += bonus;
+      player.currency += bonus;
     }
   });
 
@@ -132,7 +128,7 @@ function checkWaveProgress(room) {
     if (!room || room.state !== "playing") return;
     room.wave += 1;
     startWave(room);
-  }, 1500);
+  }, 8000);
 }
 
 export function startGameLoop(room) {
@@ -148,7 +144,8 @@ export function startGameLoop(room) {
 
     if (Object.keys(room.players).length === 0) return;
     processShooting(room);
-    updateZombies(room);
+    updateZombies(room, dt);
+    updateFireZones(room);
     updateBullets(room, dt);
     checkCollisions(room);
     checkWaveProgress(room);

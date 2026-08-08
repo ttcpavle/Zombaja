@@ -12,6 +12,7 @@ import {
   startBackgroundMusic,
 } from "./gameState.js";
 import { updateLobbyPlayers, updatePingDisplay } from "../UI/lobby.js";
+import { isShopOpen, renderShop } from "../UI/shop.js";
 
 export function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -30,6 +31,8 @@ export function connect() {
       state.roomId = data.roomId;
       state.roomOwnerId = data.ownerId ?? null;
       state.walls = data.walls;
+      state.shopZone = data.shopZone;
+      state.weaponConfig = data.weaponConfig;
       document.getElementById("roomBadge").textContent =
         `ROOM #${state.roomId}`;
       document.getElementById("roomCode").textContent =
@@ -55,6 +58,7 @@ export function connect() {
     if (data.type === "game_started") {
       showScreen("gameScreen");
       startBackgroundMusic();
+      state.gameStartedAt = data.startedAt || Date.now();
       return;
     }
 
@@ -95,6 +99,7 @@ export function connect() {
 
     if (data.type === "state") {
       syncGameState(data);
+      if (isShopOpen()) renderShop();
       return;
     }
   };
@@ -105,6 +110,7 @@ export function connect() {
     state.roomId = null;
     state.walls = [];
     state.gameState = { players: {}, zombies: [], bullets: [] };
+    state.gameStartedAt = null;
     document.getElementById("roomCode").textContent = "";
     clearInterval(state.pingInterval);
     state.pingInterval = null;

@@ -10,7 +10,6 @@
     <link href="style.css" rel="stylesheet" />
   </head>
   <body>
-    <!-- ====== MAIN MENU ====== -->
     <div id="menuScreen" class="screen active">
       <div class="logo">Zombaja</div>
       <div class="logo-sub">Multiplayer Survival</div>
@@ -50,7 +49,6 @@
       </div>
     </div>
 
-    <!-- ====== LOBBY ====== -->
     <div id="lobbyScreen" class="screen">
       <div class="lobby-container">
         <div class="lobby-header">
@@ -73,7 +71,6 @@
       </div>
     </div>
 
-    <!-- ====== GAME ====== -->
     <div id="gameScreen" class="screen">
       <div id="audioSettings" class="audio-settings">
         <div class="audio-setting">
@@ -103,9 +100,12 @@
         <canvas id="game" width="1280" height="720" tabindex="1"></canvas>
         <div id="hud">
           <div class="hud-box">SCORE <span id="hudScore">0</span></div>
+          <div class="hud-box">PARE <span id="hudCurrency">0</span></div>
           <div class="hud-box">HP <span id="hudHp">100</span></div>
+          <div class="hud-box">TIME <span id="hudTimer">00:00:00</span></div>
           <div class="hud-box hud-ping" id="hudPing">PING <span>--</span></div>
         </div>
+        <div id="leaderboard"></div>
         <div id="waveOverlay">
           <div class="death-title">wave 1</div>
           <div class="death-sub">survive<span class="waiting-dots"></span></div>
@@ -114,6 +114,17 @@
           <div class="death-title">You Died</div>
           <div class="death-sub">
             Respawning<span class="waiting-dots"></span>
+          </div>
+        </div>
+        <div id="shopPrompt">[E] Otvori prodavnicu</div>
+        <div id="shopOverlay">
+          <div id="shopPanel">
+            <div class="shop-header">
+              <div class="shop-title">Prodavnica</div>
+              <div class="shop-currency">Novac: <span id="shopCurrency">0</span></div>
+            </div>
+            <div id="weaponList"></div>
+            <div class="shop-footer"><button id="closeShopBtn">Zatvori [ESC]</button></div>
           </div>
         </div>
         <div id="controls">
@@ -128,6 +139,7 @@
     <script type="module" src="./UI/screenManager.js"></script>
     <script type="module" src="./UI/menu.js"></script>
     <script type="module" src="./UI/lobby.js"></script>
+    <script type="module" src="./UI/shop.js"></script>
     <script type="module" src="./UI/draw.js"></script>
     <script type="module" src="./logic/input.js"></script>
   </body>

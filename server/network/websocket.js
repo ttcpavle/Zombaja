@@ -16,7 +16,8 @@ import {
   GAME_HEIGHT,
   MAX_PLAYERS_PER_ROOM,
 } from "../config/constants.js";
-import { setGun } from "../game/guns.js";
+import { SHOP_ZONE } from "../world/map.js";
+import { WEAPON_CONFIG, upgradeCostAtLevel } from "../game/weaponConfig.js";
 
 let playerIdCounter = 1;
 
@@ -54,18 +55,26 @@ export function setupWebsocket(wss) {
         const spawn = SPAWN_POINTS[spawnIdx];
 
         room.players[playerId] = {
-          id: playerId,
-          name: data.name || `Player${playerId}`,
-          x: spawn.x,
-          y: spawn.y,
-          health: 100,
-          alive: true,
-          score: 0,
-          ready: data.type === "create_lobby", // creator auto-ready
-          shooting: false,
-          shootDir: { dx: 1, dy: 0 },
-          lastShotAt: 0,
-        };
+        id: playerId,
+        name: data.name || `Player${playerId}`,
+        x: spawn.x,
+        y: spawn.y,
+        health: 100,
+        alive: true,
+        score: 0,
+        ready: data.type === "create_lobby",
+        shooting: false,
+        shootDir: { dx: 1, dy: 0 },
+        lastShotAt: 0,
+        gunIndex: 0,   // <-- dodaj ovo, 0 = pistol po default-u
+        currency: 0,
+          weapons: {
+            pistol:  { owned: true,  level: 1, ammo: Infinity },
+            shotgun: { owned: false, level: 0, ammo: 0 },
+            rifle:   { owned: false, level: 0, ammo: 0 },
+            granata: { owned: false, level: 0, ammo: 0 },
+          }, // ovo je objekat koji sadrži informacije o oružjima igrača
+      };
         playerRoom[playerId] = room.id;
 
         // Confirm join to this player
@@ -78,6 +87,8 @@ export function setupWebsocket(wss) {
             roomCode: room.code,
             ownerId: room.ownerId,
             walls,
+            shopZone: SHOP_ZONE,        // dodato za klijenta da zna gde je shop zona
+            weaponConfig: WEAPON_CONFIG, // dodato za klijenta da zna konfiguraciju oružja
             roomState: room.state,
             players: Object.values(room.players).map((p) => ({
               id: p.id,
@@ -183,9 +194,38 @@ export function setupWebsocket(wss) {
       }
 
       if (data.type === "weapon_change") {
-        setGun(data.weapon);
+        if (Number.isInteger(data.weapon) && data.weapon >= 0 && data.weapon <= 3) {
+          p.gunIndex = data.weapon;   // menja SAMO ovog igrača
+        }
         return;
       }
+
+      if (data.type === "buy_weapon" || data.type === "upgrade_weapon" || data.type === "buy_ammo") {
+      const inZone =
+        p.x < SHOP_ZONE.x + SHOP_ZONE.w && p.x + 20 > SHOP_ZONE.x &&
+        p.y < SHOP_ZONE.y + SHOP_ZONE.h && p.y + 20 > SHOP_ZONE.y;
+      if (!inZone) return; // server ne veruje da si u shopu samo zato sto klijent kaze da jesi
+
+      const cfg = WEAPON_CONFIG[data.weapon];
+      const st = p.weapons[data.weapon];
+      if (!cfg || !st) return;
+
+      if (data.type === "buy_weapon" && !st.owned && p.currency >= cfg.unlockCost) {
+        p.currency -= cfg.unlockCost;
+        st.owned = true;
+        st.level = 1;
+        st.ammo = cfg.infiniteAmmo ? Infinity : Math.round(cfg.ammoPerBuy / 2);
+      }
+      if (data.type === "upgrade_weapon" && st.owned && st.level < cfg.maxLevel) {
+        const cost = upgradeCostAtLevel(cfg, st.level);
+        if (p.currency >= cost) { p.currency -= cost; st.level += 1; }
+      }
+      if (data.type === "buy_ammo" && st.owned && !cfg.infiniteAmmo && p.currency >= cfg.ammoCost) {
+        p.currency -= cfg.ammoCost;
+        st.ammo += cfg.ammoPerBuy;
+      }
+      return;
+    }
     });
 
     ws.on("close", () => {

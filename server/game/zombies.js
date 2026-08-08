@@ -3,11 +3,12 @@ import { checkWallCollision } from "../utils.js";
 import { spawnExplosion } from "./guns.js";
 import { killPlayer } from "./gameLoop.js";
 import { broadcastToRoom, sendToPlayer } from "./broadcast.js";
+import { awardHitScore } from "./scoring.js";
 
 export let zombieTypes = [
   {
     name: "default",
-    health: 4,
+    health: 4*4,
     speed: 4,
     size: 20,
     color: "#3ccf37",
@@ -15,7 +16,7 @@ export let zombieTypes = [
   },
   {
     name: "runner",
-    health: 1,
+    health: 1*4,
     speed: 8,
     size: 16,
     color: "#ffd900",
@@ -23,7 +24,7 @@ export let zombieTypes = [
   },
   {
     name: "tank",
-    health: 20,
+    health: 20*4,
     speed: 1.5,
     size: 40,
     color: "#6d341a",
@@ -31,7 +32,7 @@ export let zombieTypes = [
   },
   {
     name: "explode",
-    health: 20,
+    health: 20*4,
     speed: 5,
     size: 22.4,
     color: "#e93351",
@@ -60,6 +61,7 @@ export function spawnZombie(room, zombieType) {
         y: pos.y,
         xVel: 0,
         yVel: 0,
+        effects: [],
         ...zombieType,
       });
       return;
@@ -71,6 +73,7 @@ export function spawnZombie(room, zombieType) {
     y: fallback.y,
     xVel: 0,
     yVel: 0,
+    effects: [],
     ...zombieType,
   });
 }
@@ -98,14 +101,91 @@ function getZombieSeparation(z, room) {
   const magnitude = Math.hypot(pushX, pushY) || 1;
   return { x: (pushX / magnitude) * 10.4, y: (pushY / magnitude) * 10.4 };
 }
-//
-//{ name: "explode", health: 20, speed: 5, size: 22.4, color: '#e93351',secondaryColor: '#56f9ff' },
-export function updateZombies(room) {
+
+export function addStatusEffect(z, effect) {
+  if (!z.effects) z.effects = [];
+  const existing = z.effects.find((e) => e.type === effect.type);
+  if (existing) Object.assign(existing, effect);
+  else z.effects.push(effect);
+}
+
+export function updateFireZones(room) {
+  if (!room.fireZones) room.fireZones = [];
+  const now = Date.now();
+  room.fireZones = room.fireZones.filter((zone) => zone.endsAt > now);
+  if (room.fireZones.length === 0) return;
+
+  room.zombies.forEach((z) => {
+    const centerX = z.x + z.size / 2;
+    const centerY = z.y + z.size / 2;
+    const zone = room.fireZones.find(
+      (zn) => Math.hypot(centerX - zn.x, centerY - zn.y) < zn.radius,
+    );
+
+    if (zone) {
+      addStatusEffect(z, { type: "burn", endsAt: now + 300, dps: zone.dps, ownerId: zone.ownerId });
+      z._inFireZone = true;
+      z._lingerDps = zone.lingerDps;
+      z._lingers = zone.lingers;
+      z._lingerOwnerId = zone.ownerId;
+    } else if (z._inFireZone) {
+      z._inFireZone = false;
+      if (z._lingers) {
+        addStatusEffect(z, { type: "burn", endsAt: now + 2000, dps: z._lingerDps, ownerId: z._lingerOwnerId });
+      }
+    }
+  });
+}
+
+export function hasEffect(z, type) {
+  return !!(z.effects && z.effects.some((e) => e.type === type && e.endsAt > Date.now()));
+}
+
+const DOT_CREDIT_INTERVAL_MS = 400; // koliko cesto najvise moze da izlepi "+1" popup dok dot tika
+
+// Vraca ownerId onog efekta ciji je tick "ubio" zombija (ili null ako nista nije ubijeno)
+function applyStatusEffects(room, z, dt) {
+  if (!z.effects || z.effects.length === 0) return null;
+  const now = Date.now();
+  let killerOwnerId = null;
+
+  z.effects.forEach((e) => {
+    if (e.endsAt <= now || (e.type !== "bleed" && e.type !== "burn")) return;
+
+    z.health -= e.dps * (dt / 1000);
+
+    if (z.health <= 0) {
+      if (killerOwnerId === null) killerOwnerId = e.ownerId ?? null;
+      return; // ne saljemo periodicni "+1" za tick koji ubija - dobice se "+kill" popup umesto toga
+    }
+
+    if (e.ownerId !== undefined && e.ownerId !== null) {
+      if (!e.lastCreditAt || now - e.lastCreditAt >= DOT_CREDIT_INTERVAL_MS) {
+        e.lastCreditAt = now;
+        awardHitScore(room, e.ownerId, z, false);
+      }
+    }
+  });
+
+  z.effects = z.effects.filter((e) => e.endsAt > now);
+  z.stunned = hasEffect(z, "stun");
+  return killerOwnerId;
+}
+
+export function updateZombies(room, dt) {
   const alivePlayers = Object.values(room.players).filter((p) => p.alive);
   if (alivePlayers.length === 0) return;
 
   room.zombies.forEach((z) => {
-    // Find nearest alive player
+    const killerOwnerId = applyStatusEffects(room, z, dt);
+    if (z.health <= 0) {
+      if (killerOwnerId !== null) {
+        awardHitScore(room, killerOwnerId, z, true);
+      }
+      killZombie(room, z);
+      return;
+    }
+
     let nearest = null;
     let nearestDist = Infinity;
     alivePlayers.forEach((p) => {
@@ -117,15 +197,13 @@ export function updateZombies(room) {
     });
     if (!nearest) return;
 
-    // Move toward player while keeping a little space from nearby zombies
     const dx = nearest.x - z.x;
     const dy = nearest.y - z.y;
     const dist = Math.hypot(dx, dy);
-    if (dist > 0) {
+    if (dist > 0 && !z.stunned) {
       const nx = dx / dist;
       const ny = dy / dist;
 
-      //acceleration effect
       z.xVel += nx * 0.5;
       z.yVel += ny * 0.5;
       const separate = getZombieSeparation(z, room);
@@ -138,7 +216,6 @@ export function updateZombies(room) {
         z.yVel = (z.yVel / mag) * z.speed;
       }
 
-      // Check both axes against original position, then apply independently
       const nextX = z.x + z.xVel;
       const nextY = z.y + z.yVel;
       const canMoveX = !checkWallCollision(nextX, z.y, z.size);
@@ -147,7 +224,7 @@ export function updateZombies(room) {
       else {
         z.x += Math.sign(z.xVel) * -0.1;
         z.xVel = 0;
-      } // bounce back a bit
+      }
       if (canMoveY) z.y = nextY;
       else {
         z.y += Math.sign(z.yVel) * -0.1;
@@ -155,16 +232,16 @@ export function updateZombies(room) {
       }
     }
 
-    // Clamp to boundaries
     z.x = Math.max(0, Math.min(GAME_WIDTH - z.size, z.x));
     z.y = Math.max(0, Math.min(GAME_HEIGHT - z.size, z.y));
 
-    // Damage player on contact
     if (nearestDist < z.size) {
       if (z.name === "explode") {
         killZombie(room, z);
       } else {
-        nearest.health -= 5;
+        const burning = hasEffect(z, "burn");
+        const contactDamage = burning ? 2.5 : 5;
+        nearest.health -= contactDamage;
         sendToPlayer(nearest.id, {
           type: "player_damage",
           playerId: nearest.id,
@@ -185,33 +262,28 @@ export function updateZombies(room) {
       }
     }
   });
+
+  room.zombies = room.zombies.filter((z) => !z.dead);
 }
 
 export function killZombie(room, zombieOrIndex) {
-  let index;
-
+  let zombie;
   if (typeof zombieOrIndex === "number") {
-    index = zombieOrIndex;
+    zombie = room.zombies[zombieOrIndex];
   } else {
-    index = room.zombies.indexOf(zombieOrIndex);
+    zombie = zombieOrIndex;
+  }
+  if (!zombie || zombie.dead) return; // vec markiran u ovom tick-u - spreci dupli broadcast/eksploziju
+
+  zombie.dead = true;
+
+  if (zombie.name === "explode") {
+    spawnExplosion(room, zombie.x, zombie.y, null, 10, 52);
   }
 
-  if (room.zombies[index].name === "explode") {
-    spawnExplosion(
-      room,
-      room.zombies[index].x,
-      room.zombies[index].y,
-      null,
-      10,
-      52,
-    );
-  }
-  if (index !== -1) {
-    broadcastToRoom(room, {
-      type: "zombie_death",
-      x: room.zombies[index].x,
-      y: room.zombies[index].y,
-    });
-    room.zombies.splice(index, 1);
-  }
+  broadcastToRoom(room, {
+    type: "zombie_death",
+    x: zombie.x,
+    y: zombie.y,
+  });
 }
