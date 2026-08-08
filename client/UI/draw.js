@@ -1,10 +1,4 @@
-import {
-  CANVAS_W,
-  CANVAS_H,
-  GAME_W,
-  GAME_H,
-  PLAYER_COLORS,
-} from "../constants.js";
+import { CANVAS_W, CANVAS_H, GAME_W, GAME_H, PLAYER_COLORS } from "../constants.js";
 import { state } from "../connection/gameState.js";
 
 export let camX = 0,
@@ -25,14 +19,25 @@ function updateCamera() {
   camY = Math.max(0, Math.min(GAME_H - CANVAS_H, camY));
 }
 
+function updateTimerDisplay() {
+  const el = document.getElementById("hudTimer");
+  if (!el || !state.gameStartedAt) return;
+  const elapsed = Math.max(0, Date.now() - state.gameStartedAt);
+  const totalSec = Math.floor(elapsed / 1000);
+  const hh = String(Math.floor(totalSec / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
+  const ss = String(totalSec % 60).padStart(2, "0");
+  el.textContent = `${hh}:${mm}:${ss}`;
+}
+
 function draw() {
   updateCamera();
+  updateTimerDisplay();
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
   ctx.save();
   ctx.translate(-camX, -camY);
 
-  // Grid background (samo vidljivi deo)
   ctx.strokeStyle = "rgba(255,255,255,0.03)";
   ctx.lineWidth = 1;
   const gx0 = Math.floor(camX / 40) * 40;
@@ -50,12 +55,10 @@ function draw() {
     ctx.stroke();
   }
 
-  // Map border
   ctx.strokeStyle = "#3a3f4d";
   ctx.lineWidth = 3;
   ctx.strokeRect(0, 0, GAME_W, GAME_H);
 
-  // Walls
   state.walls.forEach((w) => {
     ctx.fillStyle = "#2a2d35";
     ctx.fillRect(w.x, w.y, w.w, w.h);
@@ -63,7 +66,6 @@ function draw() {
     ctx.lineWidth = 1;
     ctx.strokeRect(w.x, w.y, w.w, w.h);
   });
-  // Shop zona
   if (state.shopZone) {
     const z = state.shopZone;
     ctx.save();
@@ -80,8 +82,6 @@ function draw() {
     ctx.fillText("SHOP", z.x + z.w / 2, z.y - 8);
     ctx.textAlign = "left";
   }
-  //{ name: "explode", health: 20, speed: 5, size: 1.12, color: '#e93351',secondaryColor: '#56f9ff' },
-  // Zombies
   state.gameState.zombies.forEach((z) => {
     ctx.fillStyle = z.color;
     ctx.fillRect(z.x, z.y, z.size, z.size);
@@ -90,7 +90,6 @@ function draw() {
     ctx.fillRect(z.x + 12, z.y + 5, 4, 4);
   });
 
-  // Bullets
   state.gameState.bullets.forEach((b) => {
     ctx.fillStyle = "#c8f135";
     ctx.shadowColor = "#f18a35";
@@ -99,7 +98,6 @@ function draw() {
     ctx.shadowBlur = 0;
   });
 
-  // Players
   Object.values(state.gameState.players).forEach((p) => {
     if (!p.alive) return;
     const colorIdx = state.playerColorMap[p.id] ?? 0;
@@ -115,14 +113,12 @@ function draw() {
       ctx.strokeRect(p.x, p.y, 20, 20);
     }
 
-    // Health bar
     ctx.fillStyle = "#1a1d24";
     ctx.fillRect(p.x - 5, p.y - 12, 30, 5);
     ctx.fillStyle =
       p.health > 50 ? "#81c784" : p.health > 25 ? "#ffb74d" : "#ef5350";
     ctx.fillRect(p.x - 5, p.y - 12, (p.health / 100) * 30, 5);
 
-    // Name
     ctx.font = '11px "Share Tech Mono"';
     ctx.textAlign = "center";
     ctx.fillStyle = isMe ? "white" : color;

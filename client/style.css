@@ -486,16 +486,17 @@ canvas {
 
 .audio-settings {
   position: absolute;
-  top: 12px;
+  bottom: 12px; /* Prebačeno sa top na bottom */
   right: 12px;
   z-index: 20;
   background: rgba(17, 19, 24, 0.92);
   border: 1px solid var(--border);
-  padding: 10px 12px;
+  padding: 6px 8px; /* Smanjen padding za kompaktniji izgled */
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-width: 170px;
+  gap: 4px; /* Smanjen razmak između elemenata */
+  min-width: 130px; /* Smanjena minimalna širina */
+  font-size: 11px; /* Smanjen font da manje skreće pažnju */
 }
 
 .audio-setting {
@@ -626,3 +627,33 @@ button.shop-btn.secondary:hover { border-color: var(--accent); color: var(--acce
   text-transform: uppercase;
 }
 .shop-footer button:hover { border-color: var(--accent2); color: var(--accent2); }
+
+#leaderboard {
+  position: absolute;
+  top: 58px;
+  right: 12px;
+  background: rgba(10, 10, 10, 0.85);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  pointer-events: none;
+  min-width: 150px;
+}
+#leaderboard .lb-title {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+#leaderboard .lb-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+#leaderboard .lb-row.me {
+  color: var(--accent);
+}

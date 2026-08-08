@@ -31,8 +31,8 @@ export function connect() {
       state.roomId = data.roomId;
       state.roomOwnerId = data.ownerId ?? null;
       state.walls = data.walls;
-      state.shopZone = data.shopZone;       // dodato
-      state.weaponConfig = data.weaponConfig; // dodato
+      state.shopZone = data.shopZone;
+      state.weaponConfig = data.weaponConfig;
       document.getElementById("roomBadge").textContent =
         `ROOM #${state.roomId}`;
       document.getElementById("roomCode").textContent =
@@ -58,6 +58,7 @@ export function connect() {
     if (data.type === "game_started") {
       showScreen("gameScreen");
       startBackgroundMusic();
+      state.gameStartedAt = data.startedAt || Date.now();
       return;
     }
 
@@ -109,6 +110,7 @@ export function connect() {
     state.roomId = null;
     state.walls = [];
     state.gameState = { players: {}, zombies: [], bullets: [] };
+    state.gameStartedAt = null;
     document.getElementById("roomCode").textContent = "";
     clearInterval(state.pingInterval);
     state.pingInterval = null;

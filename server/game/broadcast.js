@@ -27,6 +27,7 @@ export function broadcastRoomState(room) {
     waveTotal: room.waveTotal,
     waveSpawningComplete: !!room.waveSpawningComplete,
     waveSpawningEndedAt: room.waveSpawningEndedAt,
+    startedAt: room.startedAt,
   });
 }
 

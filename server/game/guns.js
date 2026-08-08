@@ -1,10 +1,11 @@
 import { broadcastToRoom } from "./broadcast.js";
 import { computeDamage, computeShootSpeed, WEAPON_CONFIG, getMajorAbilities } from "./weaponConfig.js";
+import { trackShotBullet } from "./shotTracking.js";
 
 let bulletIdCounter = 1;
+let shotIdCounter = 1;
 
-// Ispaljuje jedan "roj" peleta - izvučeno u posebnu funkciju jer double-shot treba da je pozove dvaput
-function fireShotgunVolley(room, player, x, y, dx, dy, damage, abilities, gunDef) {
+function fireShotgunVolley(room, player, x, y, dx, dy, damage, abilities, gunDef, shotId) {
   const rangeMult = abilities.rangeMultiplier || 1;
   const knockback = abilities.knockback || 0;
   const stunChance = abilities.stunChance || 0;
@@ -12,6 +13,7 @@ function fireShotgunVolley(room, player, x, y, dx, dy, damage, abilities, gunDef
 
   for (let i = 0; i < gunDef.buckshotCount; i++) {
     const rotated = rotate2D(dx, dy, (Math.random() * 2 - 1) * gunDef.spreadAngle);
+    trackShotBullet(room, shotId, player.id);
     room.bullets.push({
       id: bulletIdCounter++,
       x,
@@ -26,6 +28,7 @@ function fireShotgunVolley(room, player, x, y, dx, dy, damage, abilities, gunDef
       knockback,
       stunChance,
       stunDuration,
+      shotId,
     });
   }
   broadcastToRoom(room, {
@@ -49,6 +52,8 @@ export const guns = {
       if (!WEAPON_CONFIG[this.name].infiniteAmmo) st.ammo -= 1;
 
       const abilities = getMajorAbilities(this.name, st.level);
+      const shotId = shotIdCounter++;
+      trackShotBullet(room, shotId, player.id);
       room.bullets.push({
         id: bulletIdCounter++,
         x,
@@ -60,8 +65,9 @@ export const guns = {
         damage: damage,
         lifetime: 2000,
         drag: 0.99,
-        pierceRemaining: abilities.pierceCount ?? 0,   // <-- koliko jos zombija moze da probije
-        pierceRamp: abilities.pierceRamp ?? 0,         // <-- % dodatnog damage-a po probijenom zombiju (samo lvl 20)
+        pierceRemaining: abilities.pierceCount ?? 0,
+        pierceRamp: abilities.pierceRamp ?? 0,
+        shotId,
       });
       broadcastToRoom(room, {
         type: "gunshot",
@@ -86,10 +92,11 @@ export const guns = {
       if (!WEAPON_CONFIG[this.name].infiniteAmmo) st.ammo -= 1;
 
       const abilities = getMajorAbilities(this.name, st.level);
-      fireShotgunVolley(room, player, x, y, dx, dy, damage, abilities, this);
+      const shotId = shotIdCounter++;
+      fireShotgunVolley(room, player, x, y, dx, dy, damage, abilities, this, shotId);
 
       if (abilities.doubleShotChance && Math.random() < abilities.doubleShotChance) {
-        fireShotgunVolley(room, player, x, y, dx, dy, damage, abilities, this);
+        fireShotgunVolley(room, player, x, y, dx, dy, damage, abilities, this, shotId);
       }
     },
   },
@@ -105,6 +112,8 @@ export const guns = {
       if (!WEAPON_CONFIG[this.name].infiniteAmmo) st.ammo -= 1;
 
       const abilities = getMajorAbilities(this.name, st.level);
+      const shotId = shotIdCounter++;
+      trackShotBullet(room, shotId, player.id);
       const rotated = rotate2D(dx, dy, (Math.random() * 2 - 1) * 5);
       room.bullets.push({
         id: bulletIdCounter++,
@@ -121,6 +130,7 @@ export const guns = {
         critChance: abilities.critChance || 0,
         critMultiplier: abilities.critMultiplier || 1,
         instakillChance: abilities.instakillChance || 0,
+        shotId,
       });
       broadcastToRoom(room, {
         type: "gunshot",
@@ -144,6 +154,8 @@ export const guns = {
       if (!WEAPON_CONFIG[this.name].infiniteAmmo) st.ammo -= 1;
 
       const abilities = getMajorAbilities(this.name, st.level);
+      const shotId = shotIdCounter++;
+      trackShotBullet(room, shotId, player.id);
 
       room.bullets.push({
         id: bulletIdCounter++,
@@ -158,6 +170,7 @@ export const guns = {
         type: "granata",
         shrapnelCount: this.shrapnelCount,
         drag: 0.95,
+        shotId,
         explosionOptions: {
           fireZone: !!abilities.fireZone,
           fireRadius: abilities.fireRadius || 60,
@@ -176,24 +189,6 @@ export const guns = {
   },
 };
 
-// export let currentGun = guns.pistol; // default
-// export function setGun(gunIndex) {
-//   switch (gunIndex) {
-//     case 0:
-//       currentGun = guns.pistol;
-//       break;
-//     case 1:
-//       currentGun = guns.shotgun;
-//       break;
-//     case 2:
-//       currentGun = guns.rifle;
-//       break;
-//     case 3:
-//       currentGun = guns.granata;
-//       break;
-//   }
-// } ovo menjam tako da resim problem sa time da svi imaju isto oruzje
-
 const gunsByIndex = [guns.pistol, guns.shotgun, guns.rifle, guns.granata];
 
 export function getGunByIndex(index) {
@@ -208,9 +203,11 @@ export function spawnExplosion(
   damage = 20,
   shrapnelCount = 52,
   options = {},
+  shotId,
 ) {
   for (let i = 0; i < shrapnelCount; i++) {
     const rotated = rotate2D(1, 1, (Math.random() * 2 - 1) * 180);
+    if (playerId !== null) trackShotBullet(room, shotId, playerId);
     room.bullets.push({
       id: bulletIdCounter++,
       x,
@@ -222,10 +219,12 @@ export function spawnExplosion(
       damage: damage,
       lifetime: 200 + (Math.random() * 2 - 1) * 100,
       drag: 1.01,
+      shotId,
+      originX: x,
+      originY: y,
     });
   }
 
-  // Level 5/10: vatra ostaje na podu, zombiji unutra primaju damage dok stoje u njoj
   if (options.fireZone) {
     if (!room.fireZones) room.fireZones = [];
     room.fireZones.push({
@@ -235,15 +234,16 @@ export function spawnExplosion(
       endsAt: Date.now() + 3000,
       dps: damage,
       lingers: !!options.burnLingers,
-      lingerDps: damage / Math.max(1, shrapnelCount),  // "jedan pelet" vrednost za level 15 efekat
+      lingerDps: damage / Math.max(1, shrapnelCount),
+      ownerId: playerId,
     });
   }
 
-  // Level 20: mini-granate koje se rasprsnu i eksplodiraju kad im istekne domet
   if (options.miniGranataCount) {
     for (let i = 0; i < options.miniGranataCount; i++) {
       const angle = (360 / options.miniGranataCount) * i + (Math.random() * 20 - 10);
       const dir = rotate2D(1, 0, angle);
+      if (playerId !== null) trackShotBullet(room, shotId, playerId);
       room.bullets.push({
         id: bulletIdCounter++,
         x,
@@ -257,7 +257,7 @@ export function spawnExplosion(
         drag: 1.0,
         type: "granata",
         shrapnelCount: Math.round(shrapnelCount / 2),
-        // miniGranataCount: 0 sprecava beskonacnu rekurziju - mini-granate ne prave svoje mini-granate
+        shotId,
         explosionOptions: { ...options, miniGranataCount: 0 },
       });
     }
@@ -278,13 +278,13 @@ export function processShooting(room) {
 
     const gun = getGunByIndex(player.gunIndex ?? 0);
     const st = player.weapons[gun.name];
-    if (!st || !st.owned) return;              // ne moze da puca oruzjem koje ne poseduje
-    if (!WEAPON_CONFIG[gun.name].infiniteAmmo && st.ammo <= 0) return; // nema municije
+    if (!st || !st.owned) return;
+    if (!WEAPON_CONFIG[gun.name].infiniteAmmo && st.ammo <= 0) return;
 
     if (!canFire(player, gun)) return;
     gun.fire(
       room,
-      player,                     // <-- CEO player objekat, ne player.id
+      player,
       player.x + 10,
       player.y + 10,
       player.shootDir.dx,
