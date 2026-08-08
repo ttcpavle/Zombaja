@@ -1,4 +1,4 @@
-import { updateZombies, spawnZombie, zombieTypes } from "./zombies.js";
+import { updateZombies, spawnZombie, zombieTypes, updateFireZones } from "./zombies.js";
 import { updateBullets, checkCollisions } from "./bullets.js";
 import { broadcastRoomState, broadcastToRoom } from "./broadcast.js";
 import { processShooting } from "./guns.js";
@@ -10,10 +10,10 @@ function logBase(value, base) {
 
 // Wave configuration: maps wave number to spawn behavior
 function getWaveConfig(waveNum) {
-  const baseDefaults = Math.max(5, logBase(waveNum + 2, 1.06) + waveNum / 5);
-  const baseRunners = Math.max(0, logBase(waveNum - 1, 1.04) + waveNum / 5);
-  const baseTanks = Math.max(0, logBase(waveNum - 8, 1.02) + waveNum / 10);
-  const baseExplodes = Math.max(0, logBase(waveNum - 19, 1.05) + waveNum / 2);
+  const baseDefaults = 5*Math.max(5, logBase(waveNum + 2, 1.06) + waveNum / 5);
+  const baseRunners = 5*Math.max(0, logBase(waveNum - 1, 1.04) + waveNum / 5);
+  const baseTanks = 5*Math.max(0, logBase(waveNum - 1, 1.02) + waveNum / 10);//8 umesto 2 je bilo
+  const baseExplodes = 5*Math.max(0, logBase(waveNum - 1, 1.05) + waveNum / 2);//ovde 19
 
   return {
     zombies: {
@@ -22,7 +22,7 @@ function getWaveConfig(waveNum) {
       tank: baseTanks,
       explode: baseExplodes,
     },
-    spawnInterval: Math.max(200, 800 - (waveNum - 1) * 20),
+    spawnInterval: Math.max(200, 400 - (waveNum - 1) * 20),
   };
 }
 
@@ -132,7 +132,7 @@ function checkWaveProgress(room) {
     if (!room || room.state !== "playing") return;
     room.wave += 1;
     startWave(room);
-  }, 1500);
+  }, 8000);
 }
 
 export function startGameLoop(room) {
@@ -148,7 +148,8 @@ export function startGameLoop(room) {
 
     if (Object.keys(room.players).length === 0) return;
     processShooting(room);
-    updateZombies(room);
+    updateZombies(room, dt);
+    updateFireZones(room);   
     updateBullets(room, dt);
     checkCollisions(room);
     checkWaveProgress(room);

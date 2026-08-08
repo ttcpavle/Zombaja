@@ -32,6 +32,7 @@ export function createRoom(privateR = false, ownerId = null) {
     players: {},
     zombies: [],
     bullets: [],
+    fireZones: [],
     zombieSpawnInterval: null,
     gameLoopInterval: null,
     spawnCount: 0,

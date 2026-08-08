@@ -7,7 +7,7 @@ import { broadcastToRoom, sendToPlayer } from "./broadcast.js";
 export let zombieTypes = [
   {
     name: "default",
-    health: 4,
+    health: 4*4,
     speed: 4,
     size: 20,
     color: "#3ccf37",
@@ -15,7 +15,7 @@ export let zombieTypes = [
   },
   {
     name: "runner",
-    health: 1,
+    health: 1*4,
     speed: 8,
     size: 16,
     color: "#ffd900",
@@ -23,7 +23,7 @@ export let zombieTypes = [
   },
   {
     name: "tank",
-    health: 20,
+    health: 20*4,
     speed: 1.5,
     size: 40,
     color: "#6d341a",
@@ -31,7 +31,7 @@ export let zombieTypes = [
   },
   {
     name: "explode",
-    health: 20,
+    health: 20*4,
     speed: 5,
     size: 22.4,
     color: "#e93351",
@@ -60,6 +60,7 @@ export function spawnZombie(room, zombieType) {
         y: pos.y,
         xVel: 0,
         yVel: 0,
+        effects: [], 
         ...zombieType,
       });
       return;
@@ -71,6 +72,7 @@ export function spawnZombie(room, zombieType) {
     y: fallback.y,
     xVel: 0,
     yVel: 0,
+    effects: [],
     ...zombieType,
   });
 }
@@ -100,11 +102,70 @@ function getZombieSeparation(z, room) {
 }
 //
 //{ name: "explode", health: 20, speed: 5, size: 22.4, color: '#e93351',secondaryColor: '#56f9ff' },
-export function updateZombies(room) {
+
+export function addStatusEffect(z, effect) {
+  if (!z.effects) z.effects = [];
+  // isti tip effekta se OSVEZAVA (produzi trajanje/promeni jacinu), ne dodaje duplikat
+  const existing = z.effects.find((e) => e.type === effect.type);
+  if (existing) Object.assign(existing, effect);
+  else z.effects.push(effect);
+}
+
+export function updateFireZones(room) {
+  if (!room.fireZones) room.fireZones = [];
+  const now = Date.now();
+  room.fireZones = room.fireZones.filter((zone) => zone.endsAt > now);
+  if (room.fireZones.length === 0) return;
+
+  room.zombies.forEach((z) => {
+    const centerX = z.x + z.size / 2;
+    const centerY = z.y + z.size / 2;
+    const zone = room.fireZones.find(
+      (zn) => Math.hypot(centerX - zn.x, centerY - zn.y) < zn.radius,
+    );
+
+    if (zone) {
+      // dok je zombi u vatri, burn efekat se stalno osvezava (kratak endsAt koji se svaki tick produzava)
+      addStatusEffect(z, { type: "burn", endsAt: now + 300, dps: zone.dps });
+      z._inFireZone = true;
+      z._lingerDps = zone.lingerDps;
+      z._lingers = zone.lingers;
+    } else if (z._inFireZone) {
+      // zombi je upravo izasao iz vatre
+      z._inFireZone = false;
+      if (z._lingers) {
+        addStatusEffect(z, { type: "burn", endsAt: now + 2000, dps: z._lingerDps });
+      }
+    }
+  });
+}
+
+export function hasEffect(z, type) {
+  return !!(z.effects && z.effects.some((e) => e.type === type && e.endsAt > Date.now()));
+}
+
+function applyStatusEffects(z, dt) {
+  if (!z.effects || z.effects.length === 0) return;
+  const now = Date.now();
+  z.effects.forEach((e) => {
+    if (e.endsAt > now && (e.type === "bleed" || e.type === "burn")) {
+      z.health -= e.dps * (dt / 1000);
+    }
+  });
+  z.effects = z.effects.filter((e) => e.endsAt > now);
+  z.stunned = hasEffect(z, "stun");
+}
+
+export function updateZombies(room, dt) {
   const alivePlayers = Object.values(room.players).filter((p) => p.alive);
   if (alivePlayers.length === 0) return;
 
   room.zombies.forEach((z) => {
+    applyStatusEffects(z, dt);
+    if (z.health <= 0) { // ako izgine od efekta
+      killZombie(room, z);
+      return;
+    } 
     // Find nearest alive player
     let nearest = null;
     let nearestDist = Infinity;
@@ -121,7 +182,7 @@ export function updateZombies(room) {
     const dx = nearest.x - z.x;
     const dy = nearest.y - z.y;
     const dist = Math.hypot(dx, dy);
-    if (dist > 0) {
+    if (dist > 0 && !z.stunned) {
       const nx = dx / dist;
       const ny = dy / dist;
 
@@ -164,7 +225,9 @@ export function updateZombies(room) {
       if (z.name === "explode") {
         killZombie(room, z);
       } else {
-        nearest.health -= 5;
+        const burning = hasEffect(z, "burn");
+        const contactDamage = burning ? 2.5 : 5; //burn prepolovi damage koji zombi pravi. nece svi shvatiti referencu
+        nearest.health -= contactDamage;
         sendToPlayer(nearest.id, {
           type: "player_damage",
           playerId: nearest.id,

@@ -12,6 +12,7 @@ import {
   startBackgroundMusic,
 } from "./gameState.js";
 import { updateLobbyPlayers, updatePingDisplay } from "../UI/lobby.js";
+import { isShopOpen, renderShop } from "../UI/shop.js";
 
 export function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -30,6 +31,8 @@ export function connect() {
       state.roomId = data.roomId;
       state.roomOwnerId = data.ownerId ?? null;
       state.walls = data.walls;
+      state.shopZone = data.shopZone;       // dodato
+      state.weaponConfig = data.weaponConfig; // dodato
       document.getElementById("roomBadge").textContent =
         `ROOM #${state.roomId}`;
       document.getElementById("roomCode").textContent =
@@ -95,6 +98,7 @@ export function connect() {
 
     if (data.type === "state") {
       syncGameState(data);
+      if (isShopOpen()) renderShop();
       return;
     }
   };

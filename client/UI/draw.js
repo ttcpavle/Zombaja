@@ -63,6 +63,23 @@ function draw() {
     ctx.lineWidth = 1;
     ctx.strokeRect(w.x, w.y, w.w, w.h);
   });
+  // Shop zona
+  if (state.shopZone) {
+    const z = state.shopZone;
+    ctx.save();
+    ctx.strokeStyle = "#c8f135";
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(z.x, z.y, z.w, z.h);
+    ctx.fillStyle = "rgba(200,241,53,0.06)";
+    ctx.fillRect(z.x, z.y, z.w, z.h);
+    ctx.restore();
+    ctx.fillStyle = "#c8f135";
+    ctx.font = '11px "Share Tech Mono"';
+    ctx.textAlign = "center";
+    ctx.fillText("SHOP", z.x + z.w / 2, z.y - 8);
+    ctx.textAlign = "left";
+  }
   //{ name: "explode", health: 20, speed: 5, size: 1.12, color: '#e93351',secondaryColor: '#56f9ff' },
   // Zombies
   state.gameState.zombies.forEach((z) => {

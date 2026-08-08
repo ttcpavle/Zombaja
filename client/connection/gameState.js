@@ -14,6 +14,8 @@ export const state = {
   playerName: "",
 
   walls: [],
+  shopZone: null,        // dodato za shop
+  weaponConfig: {},      // dodato za konfiguraciju oružja
   gameState: { players: {}, zombies: [], bullets: [] },
   playerColorMap: {},
   colorCounter: 0,
@@ -277,6 +279,8 @@ export function syncGameState(data) {
         state.gameState.players[id].score = serverSelf.score;
         state.gameState.players[id].alive = serverSelf.alive;
         state.gameState.players[id].name = serverSelf.name;
+        state.gameState.players[id].currency = serverSelf.currency;   // ovo je dodato za shop tj da bi klijent video koliko ima para
+        state.gameState.players[id].weapons = serverSelf.weapons; // ovo je dodato za oruzja da ih jelte vidi i tako to kojekude
         /*if (state.gameState.players[id].name !== serverSelf.name) {
           document
             .getElementById("waveOverlay")

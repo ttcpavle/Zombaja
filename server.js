@@ -34,7 +34,10 @@ const server = http.createServer((req, res) => {
       res.end("Not found");
       return;
     }
-    res.writeHead(200, { "Content-Type": mimeTypes[ext] || "text/plain" });
+    res.writeHead(200, {
+      "Content-Type": mimeTypes[ext] || "text/plain",
+      "Cache-Control": "no-store",   // <-- ovo je kljucna izmena
+    });
     res.end(content);
   });
 });

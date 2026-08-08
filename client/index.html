@@ -116,6 +116,17 @@
             Respawning<span class="waiting-dots"></span>
           </div>
         </div>
+        <div id="shopPrompt">[E] Otvori prodavnicu</div>
+        <div id="shopOverlay">
+          <div id="shopPanel">
+            <div class="shop-header">
+              <div class="shop-title">Prodavnica</div>
+              <div class="shop-currency">Novac: <span id="shopCurrency">0</span></div>
+            </div>
+            <div id="weaponList"></div>
+            <div class="shop-footer"><button id="closeShopBtn">Zatvori [ESC]</button></div>
+          </div>
+        </div>
         <div id="controls">
           WASD - Move // RMB - Shoot // change weapon - (1-4) or scroll
         </div>
@@ -128,6 +139,7 @@
     <script type="module" src="./UI/screenManager.js"></script>
     <script type="module" src="./UI/menu.js"></script>
     <script type="module" src="./UI/lobby.js"></script>
+    <script type="module" src="./UI/shop.js"></script>
     <script type="module" src="./UI/draw.js"></script>
     <script type="module" src="./logic/input.js"></script>
   </body>

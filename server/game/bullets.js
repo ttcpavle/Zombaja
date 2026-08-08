@@ -1,11 +1,14 @@
 import { checkWallCollision } from "../utils.js";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config/constants.js";
 import { spawnExplosion } from "./guns.js";
-import { killZombie } from "./zombies.js";
+import { killZombie, addStatusEffect } from "./zombies.js";
 import { killPlayer } from "./gameLoop.js";
 import { sendToPlayer, broadcastToRoom } from "./broadcast.js";
 
+const BLEED_HEALTH_PERCENT = 0.02;
+
 function awardHitScore(room, playerId, z, killed) {
+  const CURRENCY_PER_KILL = 100;
   if (!room.hitCombos) room.hitCombos = {};
   const combo = room.hitCombos[playerId] || { count: 0, lastTime: 0 };
   const now = Date.now();
@@ -27,7 +30,10 @@ function awardHitScore(room, playerId, z, killed) {
   room.hitCombos[playerId] = combo;
 
   const player = room.players[playerId];
-  if (player) player.score += points;
+  if (player) {
+    player.score += points;
+    if (killed) player.currency += CURRENCY_PER_KILL;
+  }
 
   sendToPlayer(playerId, {
     type: "hit_feedback",
@@ -55,7 +61,7 @@ export function updateBullets(room, dt) {
         x: b.x,
         y: b.y,
       });
-      spawnExplosion(room, b.x, b.y, b.owner, b.damage, b.shrapnelCount);
+      spawnExplosion(room, b.x, b.y, b.owner, b.damage, b.shrapnelCount, b.explosionOptions || {});
     }
   });
   room.bullets = room.bullets.filter(
@@ -81,31 +87,69 @@ export function checkCollisions(room) {
     }
 
     room.zombies.forEach((z, zi) => {
-      const dist = Math.hypot(
-        b.x - (z.x + z.size / 2),
-        b.y - (z.y + z.size / 2),
-      );
-      if (dist < z.size) {
-        const hitOwnerId = b.owner;
-        const killed = z.health - b.damage <= 0;
+    const dist = Math.hypot(
+      b.x - (z.x + z.size / 2),
+      b.y - (z.y + z.size / 2),
+    );
+    if (dist < z.size) {
+      const hitOwnerId = b.owner;
 
-        z.health -= b.damage;
-        b.dead = true;
-
-        if (hitOwnerId !== null) {
-          awardHitScore(room, hitOwnerId, z, killed);
-          broadcastToRoom(room, {
-            type: "zombie_hit",
-            ownerId: hitOwnerId,
-            x: z.x + z.size / 2,
-            y: z.y + z.size / 2,
-          });
-        }
-
-        if (killed) {
-          killZombie(room, zi);
+      // Crit / instakill (rifle) - racuna se PRE nego sto znamo da li je killed
+      let damage = b.damage;
+      if (b.critChance && Math.random() < b.critChance) {
+        damage *= b.critMultiplier;
+        if (b.instakillChance && Math.random() < b.instakillChance) {
+          // + z.isBoss provera ide ovde kad dodamo boss zombije
+          damage = z.health + 99999;
         }
       }
-    });
+
+      const killed = z.health - damage <= 0;
+      z.health -= damage;
+
+      // Bleed (rifle) - samo ako zombi prezivi ovaj hit, nema smisla bleedovati les
+      if (!killed && b.bleedChance && Math.random() < b.bleedChance) {
+        addStatusEffect(z, {
+          type: "bleed",
+          endsAt: Date.now() + 3000,
+          dps: z.health * BLEED_HEALTH_PERCENT * z.speed,
+        });
+      }
+
+      // Knockback (shotgun)
+      if (b.knockback) {
+        const nextX = z.x + b.dx * b.knockback;
+        const nextY = z.y + b.dy * b.knockback;
+        if (!checkWallCollision(nextX, z.y, z.size)) z.x = nextX;
+        if (!checkWallCollision(z.x, nextY, z.size)) z.y = nextY;
+      }
+
+      // Stun (shotgun)
+      if (b.stunChance && Math.random() < b.stunChance) {
+        addStatusEffect(z, { type: "stun", endsAt: Date.now() + b.stunDuration });
+      }
+
+      // Pierce (pistol)
+      if (b.pierceRemaining && b.pierceRemaining > 0) {
+        b.pierceRemaining -= 1;
+        if (b.pierceRamp) b.damage *= 1 + b.pierceRamp;
+      } else {
+        b.dead = true;
+      }
+
+      if (hitOwnerId !== null) {
+        awardHitScore(room, hitOwnerId, z, killed);
+        broadcastToRoom(room, {
+          type: "zombie_hit",
+          ownerId: hitOwnerId,
+          x: z.x + z.size / 2,
+          y: z.y + z.size / 2,
+        });
+      }
+      if (killed) {
+        killZombie(room, zi);
+      }
+    }
+  });
   });
 }
