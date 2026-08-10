@@ -1,8 +1,8 @@
 import { updateZombies, spawnZombie, zombieTypes, updateFireZones } from "./zombies.js";
 import { updateBullets, checkCollisions } from "./bullets.js";
+import { updateConsumables } from "./consumables.js";
 import { broadcastRoomState, broadcastToRoom } from "./broadcast.js";
 import { processShooting } from "./guns.js";
-import { SPAWN_POINTS } from "../world/map.js";
 
 function logBase(value, base) {
   return Math.log(value) / Math.log(base);
@@ -21,7 +21,7 @@ function getWaveConfig(waveNum) {
       tank: baseTanks,
       explode: baseExplodes,
     },
-    spawnInterval: Math.max(200, 800 - (waveNum - 1) * 20),
+    spawnInterval: Math.max(200, 400 - (waveNum - 1) * 20),
   };
 }
 
@@ -144,6 +144,7 @@ export function startGameLoop(room) {
 
     if (Object.keys(room.players).length === 0) return;
     processShooting(room);
+    updateConsumables(room, dt);
     updateZombies(room, dt);
     updateFireZones(room);
     updateBullets(room, dt);
@@ -168,14 +169,4 @@ export function stopGameLoop(room) {
     room.gameLoopInterval = null;
   }
   clearWaveTimers(room);
-}
-
-export function killPlayer(room, player) {
-  player.alive = false;
-  setTimeout(() => {
-    player.x = SPAWN_POINTS[0].x;
-    player.y = SPAWN_POINTS[0].y;
-    player.health = 100;
-    player.alive = true;
-  }, 3000);
 }

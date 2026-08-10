@@ -69,7 +69,12 @@ function sendShootCommand(action) {
   state.ws.send(JSON.stringify(message));
 }
 
-var selectedWeapon = 0;//bilo je 1 kao shotgun pa sam stavio na 0 da bude pistol
+function useConsumable(item) {
+  if (!state.ws || state.ws.readyState !== 1) return;
+  state.ws.send(JSON.stringify({ type: "use_consumable", item }));
+}
+
+var selectedWeapon = 0;
 
 function scroolWeapon(direction) {
   if (direction === "up") {
@@ -89,15 +94,6 @@ function setWeapon(index) {
 }
 
 function changeWeapon() {
-  const weapon = document.getElementById("weapon");
-  weapon.textContent =
-    selectedWeapon === 0
-      ? "pistol"
-      : selectedWeapon === 1
-        ? "shotgun"
-        : selectedWeapon === 2
-          ? "rifle"
-          : "grenade";
   const message = {
     type: `weapon_change`,
     weapon: selectedWeapon,
@@ -120,12 +116,6 @@ canvas.addEventListener("mousedown", (e) => {
   mouseState.y = e.clientY;
   updateFiringState();
 });
-
-/*canvas.addEventListener("mouseup", () => {
-  if (!mouseState.down) return;
-  mouseState.down = false;
-  sendShootCommand("stop");
-});*///ovaj ovde nije potreban jer ima dole i window a dodato je i ovo za mouseleave
 
 canvas.addEventListener("mouseleave", () => {
   mouseState.down = false;
@@ -154,7 +144,6 @@ window.addEventListener("keyup", (e) => {
 
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-// Mouse scroll
 canvas.addEventListener(
   "wheel",
   (e) => {
@@ -169,12 +158,24 @@ canvas.addEventListener(
   { passive: false },
 );
 
-// 1-4 za oruzje i e i esc za shop
+// 1-4 za oruzje, E/R/T za consumables (medkit/adrenalin/spas), E i za shop, esc za shop
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
 
   if (e.code === "KeyE") {
-    if (!isShopOpen() && isInShopZone()) openShop();
+    if (isShopOpen()) return;
+    if (isInShopZone()) { openShop(); return; }
+    useConsumable("medkit");
+    return;
+  }
+  if (e.code === "KeyR") {
+    if (isShopOpen()) return;
+    useConsumable("adrenalin");
+    return;
+  }
+  if (e.code === "KeyT") {
+    if (isShopOpen()) return;
+    useConsumable("spas");
     return;
   }
   if (e.code === "Escape") {
@@ -192,13 +193,16 @@ window.addEventListener("keydown", (e) => {
 
 function movePlayer() {
   updateShopPrompt();
-  if (isShopOpen()) return;   // dok je shop otvoren, ne saljemo move
+  if (isShopOpen()) return;
   const me = state.gameState.players[state.playerId];
   if (!me || !me.alive || !state.ws || state.ws.readyState !== 1) return;
 
+  let speed = 3;
+  if (me.channeling) speed *= 0.5;
+  if (me.adrenalineBar) speed *= 1 + 0.30 * me.adrenalineBar; // 0.30 = ADRENALIN_MAX_SPEED_BONUS na serveru (consumables.js) - drzati u sinhronizaciji
+
   let dx = 0,
     dy = 0;
-  const speed = 3;
   if (keys["KeyW"] || keys["ArrowUp"]) dy -= speed;
   if (keys["KeyS"] || keys["ArrowDown"]) dy += speed;
   if (keys["KeyA"] || keys["ArrowLeft"]) dx -= speed;
@@ -214,3 +218,6 @@ function movePlayer() {
 }
 
 setInterval(movePlayer, 1000 / 60);
+
+window.setWeaponFromHud = (index) => setWeapon(index + 1);
+window.useConsumableFromHud = (item) => useConsumable(item);

@@ -18,6 +18,13 @@ import {
 } from "../config/constants.js";
 import { SHOP_ZONE } from "../world/map.js";
 import { WEAPON_CONFIG, upgradeCostAtLevel } from "../game/weaponConfig.js";
+import {
+  CONSUMABLE_CONFIG,
+  createConsumableState,
+  startConsumableUse,
+  cancelChannelIfShooting,
+  cancelChannelOnWeaponSwitch,
+} from "../game/consumables.js";
 
 let playerIdCounter = 1;
 
@@ -28,7 +35,6 @@ export function setupWebsocket(wss) {
     ws.on("message", (msg) => {
       const data = JSON.parse(msg);
 
-      // ---- JOIN: assign player to a room ----
       if (
         data.type === "create_lobby" ||
         data.type === "join_public" ||
@@ -66,18 +72,20 @@ export function setupWebsocket(wss) {
         shooting: false,
         shootDir: { dx: 1, dy: 0 },
         lastShotAt: 0,
-        gunIndex: 0,   // <-- dodaj ovo, 0 = pistol po default-u
+        gunIndex: 0,
         currency: 0,
           weapons: {
             pistol:  { owned: true,  level: 1, ammo: Infinity },
             shotgun: { owned: false, level: 0, ammo: 0 },
             rifle:   { owned: false, level: 0, ammo: 0 },
             granata: { owned: false, level: 0, ammo: 0 },
-          }, // ovo je objekat koji sadrži informacije o oružjima igrača
+          },
+          consumables: createConsumableState(),
+          adrenalineBar: 0,
+          channeling: null,
       };
         playerRoom[playerId] = room.id;
 
-        // Confirm join to this player
         ws.send(
           JSON.stringify({
             type: "joined",
@@ -87,8 +95,9 @@ export function setupWebsocket(wss) {
             roomCode: room.code,
             ownerId: room.ownerId,
             walls,
-            shopZone: SHOP_ZONE,        // dodato za klijenta da zna gde je shop zona
-            weaponConfig: WEAPON_CONFIG, // dodato za klijenta da zna konfiguraciju oružja
+            shopZone: SHOP_ZONE,
+            weaponConfig: WEAPON_CONFIG,
+            consumableConfig: CONSUMABLE_CONFIG,
             roomState: room.state,
             players: Object.values(room.players).map((p) => ({
               id: p.id,
@@ -98,30 +107,27 @@ export function setupWebsocket(wss) {
           }),
         );
 
-        // Notify everyone in lobby
         broadcastLobbyUpdate(room);
-        // If public room reached max capacity, auto-start
         if (
           room.type === "public" &&
           Object.keys(room.players).length >= MAX_PLAYERS_PER_ROOM
         ) {
           room.state = "playing";
+          room.startedAt = Date.now();
           startGameLoop(room);
-          broadcastToRoom(room, { type: "game_started" });
+          broadcastToRoom(room, { type: "game_started", startedAt: room.startedAt });
           console.log(`Public room ${room.id} auto-started (max players)`);
         }
         console.log(`Player ${playerId} (${data.name}) joined room ${room.id}`);
         return;
       }
 
-      // All subsequent messages require playerId to be set
       if (!playerId) return;
 
       const room = rooms[playerRoom[playerId]];
       if (!room) return;
       const p = room.players[playerId];
 
-      // ---- SET READY ----
       if (data.type === "set_ready") {
         if (!room.players[playerId]) return;
         room.players[playerId].ready = !!data.ready;
@@ -129,15 +135,12 @@ export function setupWebsocket(wss) {
         return;
       }
 
-      // ---- PING/PONG ----
       if (data.type === "ping") {
         ws.send(JSON.stringify({ type: "pong", sentAt: data.sentAt }));
         return;
       }
 
-      // ---- START GAME ----
       if (data.type === "start_game") {
-        // only room owner can start
         if (room.state !== "lobby") return;
         if (room.ownerId !== playerId) {
           ws.send(
@@ -153,15 +156,14 @@ export function setupWebsocket(wss) {
           );
           return;
         }
-        // minimum 1 player enforced implicitly
         room.state = "playing";
+        room.startedAt = Date.now();
         startGameLoop(room);
-        broadcastToRoom(room, { type: "game_started" });
+        broadcastToRoom(room, { type: "game_started", startedAt: room.startedAt });
         console.log(`Room ${room.id} game started`);
         return;
       }
 
-      // ---- IN-GAME ACTIONS ----
       if (room.state !== "playing") return;
       if (!p || !p.alive) return;
 
@@ -184,6 +186,7 @@ export function setupWebsocket(wss) {
         }
         if (data.type === "shoot_start") {
           p.shooting = true;
+          cancelChannelIfShooting(p);
         }
         return;
       }
@@ -195,7 +198,15 @@ export function setupWebsocket(wss) {
 
       if (data.type === "weapon_change") {
         if (Number.isInteger(data.weapon) && data.weapon >= 0 && data.weapon <= 3) {
-          p.gunIndex = data.weapon;   // menja SAMO ovog igrača
+          cancelChannelOnWeaponSwitch(p, data.weapon);
+          p.gunIndex = data.weapon;
+        }
+        return;
+      }
+
+      if (data.type === "use_consumable") {
+        if (data.item === "medkit" || data.item === "adrenalin" || data.item === "spas") {
+          startConsumableUse(room, p, data.item);
         }
         return;
       }
@@ -204,7 +215,7 @@ export function setupWebsocket(wss) {
       const inZone =
         p.x < SHOP_ZONE.x + SHOP_ZONE.w && p.x + 20 > SHOP_ZONE.x &&
         p.y < SHOP_ZONE.y + SHOP_ZONE.h && p.y + 20 > SHOP_ZONE.y;
-      if (!inZone) return; // server ne veruje da si u shopu samo zato sto klijent kaze da jesi
+      if (!inZone) return;
 
       const cfg = WEAPON_CONFIG[data.weapon];
       const st = p.weapons[data.weapon];
@@ -226,6 +237,23 @@ export function setupWebsocket(wss) {
       }
       return;
     }
+
+      if (data.type === "buy_consumable") {
+        const inZone =
+          p.x < SHOP_ZONE.x + SHOP_ZONE.w && p.x + 20 > SHOP_ZONE.x &&
+          p.y < SHOP_ZONE.y + SHOP_ZONE.h && p.y + 20 > SHOP_ZONE.y;
+        if (!inZone) return;
+
+        const cfg = CONSUMABLE_CONFIG[data.item];
+        const inv = p.consumables[data.item];
+        if (!cfg || !inv) return;
+
+        if (inv.count < cfg.maxCount && p.currency >= cfg.cost) {
+          p.currency -= cfg.cost;
+          inv.count += 1;
+        }
+        return;
+      }
     });
 
     ws.on("close", () => {
@@ -240,7 +268,6 @@ export function setupWebsocket(wss) {
           broadcastLobbyUpdate(room);
         }
 
-        // Clean up empty rooms
         if (Object.keys(room.players).length === 0) {
           stopGameLoop(room);
           delete rooms[roomId];

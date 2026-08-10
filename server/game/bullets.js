@@ -2,7 +2,7 @@ import { checkWallCollision } from "../utils.js";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config/constants.js";
 import { spawnExplosion } from "./guns.js";
 import { killZombie, addStatusEffect } from "./zombies.js";
-import { killPlayer } from "./gameLoop.js";
+import { killPlayer } from "./playerLifecycle.js";
 import { sendToPlayer, broadcastToRoom } from "./broadcast.js";
 import { awardHitScore } from "./scoring.js";
 import { markShotHit, resolveShotBullet } from "./shotTracking.js";

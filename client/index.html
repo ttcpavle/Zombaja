@@ -105,7 +105,9 @@
           <div class="hud-box">TIME <span id="hudTimer">00:00:00</span></div>
           <div class="hud-box hud-ping" id="hudPing">PING <span>--</span></div>
         </div>
+        <div id="adrenalineBarWrap"><div id="adrenalineBarFill"></div></div>
         <div id="leaderboard"></div>
+        <div id="toastBanner"></div>
         <div id="waveOverlay">
           <div class="death-title">wave 1</div>
           <div class="death-sub">survive<span class="waiting-dots"></span></div>
@@ -123,14 +125,20 @@
               <div class="shop-title">Prodavnica</div>
               <div class="shop-currency">Novac: <span id="shopCurrency">0</span></div>
             </div>
+            <div class="shop-section-title">Oruzje</div>
             <div id="weaponList"></div>
+            <div class="shop-section-title">Potrosni itemi</div>
+            <div id="consumableList"></div>
             <div class="shop-footer"><button id="closeShopBtn">Zatvori [ESC]</button></div>
           </div>
         </div>
         <div id="controls">
-          WASD - Move // RMB - Shoot // change weapon - (1-4) or scroll
+          WASD - Move // RMB - Shoot // 1-4 / scroll - Weapon // E/R/T - Medkit/Adrenalin/SPAS
         </div>
-        <div id="weapon">pistol</div>
+        <div id="actionBar">
+          <div id="weaponIcons"></div>
+          <div id="consumableIcons"></div>
+        </div>
       </div>
     </div>
 

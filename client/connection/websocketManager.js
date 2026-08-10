@@ -13,6 +13,17 @@ import {
 } from "./gameState.js";
 import { updateLobbyPlayers, updatePingDisplay } from "../UI/lobby.js";
 import { isShopOpen, renderShop } from "../UI/shop.js";
+import { renderActionBar, showToast } from "../UI/hud.js";
+
+function buildSpasMessage(data) {
+  if (!data.victimId) {
+    return `${data.userName} je aktivirao/la SPAS pilulu.`;
+  }
+  if (data.victimId === data.userId) {
+    return `${data.userName} nije prezivela/o sopstvenu SPAS pilulu.`;
+  }
+  return `${data.victimName} je nastradao/la umesto ${data.userName}!`;
+}
 
 export function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -33,6 +44,7 @@ export function connect() {
       state.walls = data.walls;
       state.shopZone = data.shopZone;
       state.weaponConfig = data.weaponConfig;
+      state.consumableConfig = data.consumableConfig || {};
       document.getElementById("roomBadge").textContent =
         `ROOM #${state.roomId}`;
       document.getElementById("roomCode").textContent =
@@ -97,8 +109,14 @@ export function connect() {
       return;
     }
 
+    if (data.type === "spas_used") {
+      showToast(buildSpasMessage(data));
+      return;
+    }
+
     if (data.type === "state") {
       syncGameState(data);
+      renderActionBar(state.gameState.players[state.playerId]);
       if (isShopOpen()) renderShop();
       return;
     }

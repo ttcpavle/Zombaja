@@ -4,8 +4,11 @@ function upgradeCostAtLevel(cfg, level) {
   return Math.round(cfg.upgradeCostBase * Math.pow(cfg.upgradeCostGrowth, level));
 }
 
+const CONSUMABLE_LABELS = { medkit: "Medkit", adrenalin: "Adrenalin", spas: "SPAS Pilula" };
+
 let shopOpen = false;
-const weaponRowElements = {};   // ime oruzja -> reference na DOM elemente, prave se SAMO JEDNOM
+const weaponRowElements = {};
+const consumableRowElements = {};
 
 function me() {
   return state.gameState.players[state.playerId];
@@ -47,9 +50,6 @@ function sendShopAction(type, weapon) {
   state.ws.send(JSON.stringify({ type, weapon }));
 }
 
-// Pravi DOM strukturu za jedno oruzje SAMO PRVI PUT - posle toga se element
-// nikad ne brise, samo mu se menja tekst/disabled. Zato klik uvek "pogadja"
-// isti element, bez obzira koliko cesto zovemo renderShop().
 function buildRow(name) {
   const row = document.createElement("div");
   row.className = "weapon-row";
@@ -109,6 +109,40 @@ function updateRow(name, cfg, st, player) {
   }
 }
 
+function buildConsumableRow(name) {
+  const row = document.createElement("div");
+  row.className = "weapon-row";
+  row.innerHTML = `
+    <div class="weapon-top">
+      <div class="weapon-name"><span class="c-name"></span></div>
+      <div class="weapon-stat">IMAS <b class="c-count"></b></div>
+    </div>
+    <div class="weapon-actions">
+      <button class="shop-btn" data-item="${name}"></button>
+    </div>
+  `;
+  document.getElementById("consumableList").appendChild(row);
+  const refs = {
+    row,
+    nameEl: row.querySelector(".c-name"),
+    countEl: row.querySelector(".c-count"),
+    buyBtn: row.querySelector(".shop-btn"),
+  };
+  consumableRowElements[name] = refs;
+  return refs;
+}
+
+function updateConsumableRow(name, cfg, inv, player) {
+  const refs = consumableRowElements[name] || buildConsumableRow(name);
+  refs.nameEl.textContent = CONSUMABLE_LABELS[name] || name;
+  refs.countEl.textContent = `${inv.count}/${cfg.maxCount}`;
+  const atMax = inv.count >= cfg.maxCount;
+  refs.buyBtn.dataset.action = "buy_consumable";
+  refs.buyBtn.dataset.item = name;
+  refs.buyBtn.textContent = atMax ? "MAX" : `Kupi — ${cfg.cost}`;
+  refs.buyBtn.disabled = atMax || player.currency < cfg.cost;
+}
+
 export function renderShop() {
   const player = me();
   const currencyEl = document.getElementById("shopCurrency");
@@ -119,13 +153,23 @@ export function renderShop() {
   Object.keys(state.weaponConfig).forEach((name) => {
     updateRow(name, state.weaponConfig[name], player.weapons[name], player);
   });
+
+  Object.keys(state.consumableConfig || {}).forEach((name) => {
+    updateConsumableRow(name, state.consumableConfig[name], player.consumables[name], player);
+  });
 }
 
-// Event delegation - JEDAN listener, zauvek, na roditelju koji se nikad ne brise.
 document.getElementById("weaponList")?.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
   sendShopAction(btn.dataset.action, btn.dataset.weapon);
+});
+
+document.getElementById("consumableList")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-action='buy_consumable']");
+  if (!btn) return;
+  if (!state.ws || state.ws.readyState !== 1) return;
+  state.ws.send(JSON.stringify({ type: "buy_consumable", item: btn.dataset.item }));
 });
 
 document.getElementById("closeShopBtn")?.addEventListener("click", closeShop);

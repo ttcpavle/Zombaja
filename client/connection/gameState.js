@@ -16,6 +16,7 @@ export const state = {
   walls: [],
   shopZone: null,
   weaponConfig: {},
+  consumableConfig: {},
   gameState: { players: {}, zombies: [], bullets: [] },
   playerColorMap: {},
   colorCounter: 0,
@@ -304,6 +305,10 @@ export function syncGameState(data) {
         state.gameState.players[id].name = serverSelf.name;
         state.gameState.players[id].currency = serverSelf.currency;
         state.gameState.players[id].weapons = serverSelf.weapons;
+        state.gameState.players[id].gunIndex = serverSelf.gunIndex;
+        state.gameState.players[id].channeling = serverSelf.channeling;
+        state.gameState.players[id].adrenalineBar = serverSelf.adrenalineBar;
+        state.gameState.players[id].consumables = serverSelf.consumables;
 
         const dist = Math.hypot(
           state.gameState.players[id].x - serverSelf.x,

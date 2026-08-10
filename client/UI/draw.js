@@ -30,6 +30,38 @@ function updateTimerDisplay() {
   el.textContent = `${hh}:${mm}:${ss}`;
 }
 
+function drawChannelingRing(p) {
+  if (!p.channeling) return;
+  const elapsed = Date.now() - p.channeling.startedAt;
+  const remaining = Math.max(0, p.channeling.duration - elapsed);
+  const progress = Math.min(1, elapsed / p.channeling.duration);
+
+  const cx = p.x + 30;
+  const cy = p.y - 2;
+  const radius = 11;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(255,255,255,0.15)";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = "#fff";
+  ctx.font = '10px "Share Tech Mono"';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(Math.ceil(remaining / 1000).toString(), cx, cy + 1);
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}
+
 function draw() {
   updateCamera();
   updateTimerDisplay();
@@ -124,6 +156,8 @@ function draw() {
     ctx.fillStyle = isMe ? "white" : color;
     ctx.fillText(p.name, p.x + 10, p.y - 16);
     ctx.textAlign = "left";
+
+    drawChannelingRing(p);
   });
 
   const now = Date.now();
@@ -149,10 +183,6 @@ function draw() {
   ctx.restore();
 
   requestAnimationFrame(draw);
-}
-
-function escHtml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 draw();

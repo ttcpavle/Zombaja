@@ -1,7 +1,7 @@
 import { GAME_WIDTH, GAME_HEIGHT } from "../config/constants.js";
 import { checkWallCollision } from "../utils.js";
 import { spawnExplosion } from "./guns.js";
-import { killPlayer } from "./gameLoop.js";
+import { killPlayer } from "./playerLifecycle.js";
 import { broadcastToRoom, sendToPlayer } from "./broadcast.js";
 import { awardHitScore } from "./scoring.js";
 
@@ -141,9 +141,8 @@ export function hasEffect(z, type) {
   return !!(z.effects && z.effects.some((e) => e.type === type && e.endsAt > Date.now()));
 }
 
-const DOT_CREDIT_INTERVAL_MS = 400; // koliko cesto najvise moze da izlepi "+1" popup dok dot tika
+const DOT_CREDIT_INTERVAL_MS = 400;
 
-// Vraca ownerId onog efekta ciji je tick "ubio" zombija (ili null ako nista nije ubijeno)
 function applyStatusEffects(room, z, dt) {
   if (!z.effects || z.effects.length === 0) return null;
   const now = Date.now();
@@ -156,7 +155,7 @@ function applyStatusEffects(room, z, dt) {
 
     if (z.health <= 0) {
       if (killerOwnerId === null) killerOwnerId = e.ownerId ?? null;
-      return; // ne saljemo periodicni "+1" za tick koji ubija - dobice se "+kill" popup umesto toga
+      return;
     }
 
     if (e.ownerId !== undefined && e.ownerId !== null) {
@@ -177,6 +176,8 @@ export function updateZombies(room, dt) {
   if (alivePlayers.length === 0) return;
 
   room.zombies.forEach((z) => {
+    if (z.dead) return; // vec markiran (npr od SPAS pilule) - ne obradjuj dalje u ovom tick-u
+
     const killerOwnerId = applyStatusEffects(room, z, dt);
     if (z.health <= 0) {
       if (killerOwnerId !== null) {
@@ -273,7 +274,7 @@ export function killZombie(room, zombieOrIndex) {
   } else {
     zombie = zombieOrIndex;
   }
-  if (!zombie || zombie.dead) return; // vec markiran u ovom tick-u - spreci dupli broadcast/eksploziju
+  if (!zombie || zombie.dead) return;
 
   zombie.dead = true;
 
