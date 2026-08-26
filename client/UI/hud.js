@@ -3,11 +3,9 @@ import { state } from "../connection/gameState.js";
 const WEAPON_ORDER = ["pistol", "shotgun", "rifle", "granata"];
 const WEAPON_HOTKEYS = ["1", "2", "3", "4"];
 const CONSUMABLE_ORDER = ["medkit", "adrenalin", "spas"];
-const CONSUMABLE_HOTKEYS = { medkit: "E", adrenalin: "R", spas: "T" };
+const CONSUMABLE_HOTKEYS = { medkit: "Q", adrenalin: "R", spas: "T" };
 const CONSUMABLE_LABELS = { medkit: "Medkit", adrenalin: "Adrenalin", spas: "SPAS Pilula" };
 
-// Proste geometrijske ikonice - privremeno resenje dok ne postoje prave slike.
-// "fill=currentColor" na osnovnim oblicima, tamni fill na delovima koji prave "izrez" (npr krst na medkitu).
 const ICONS = {
   pistol: `<rect x="6" y="14" width="16" height="6" rx="1" fill="currentColor"></rect><rect x="20" y="10" width="6" height="4" rx="1" fill="currentColor"></rect><rect x="9" y="20" width="5" height="8" rx="1" fill="currentColor"></rect>`,
   shotgun: `<rect x="3" y="15" width="24" height="4" rx="1" fill="currentColor"></rect><rect x="25" y="13" width="5" height="8" rx="1" fill="currentColor"></rect><rect x="6" y="19" width="4" height="7" rx="1" fill="currentColor"></rect>`,

@@ -6,6 +6,7 @@ import {
   rooms,
   playerRoom,
   playerWs,
+  generateRoomCode,
 } from "../rooms/roomManager.js";
 import { checkWallCollision } from "../utils.js";
 import { SPAWN_POINTS, walls } from "../world/map.js";
@@ -28,6 +29,65 @@ import {
 
 let playerIdCounter = 1;
 
+function createPlayerState(id, name, spawn, ready) {
+  return {
+    id,
+    name: name || `Player${id}`,
+    x: spawn.x,
+    y: spawn.y,
+    health: 100,
+    alive: true,
+    score: 0,
+    ready: !!ready,
+    shooting: false,
+    shootDir: { dx: 1, dy: 0 },
+    lastShotAt: 0,
+    gunIndex: 0,
+    currency: 0,
+    weapons: {
+      pistol:  { owned: true,  level: 1, ammo: Infinity },
+      shotgun: { owned: false, level: 0, ammo: 0 },
+      rifle:   { owned: false, level: 0, ammo: 0 },
+      granata: { owned: false, level: 0, ammo: 0 },
+    },
+    consumables: createConsumableState(),
+    adrenalineBar: 0,
+    channeling: null,
+  };
+}
+
+// Zove se svaki put kad neko napusti sobu ili se neko pridruzi - garantuje da
+// soba uvek ima validnog vlasnika (nekog ko je stvarno jos u room.players).
+function ensureRoomOwner(room, fallbackId) {
+  if (room.ownerId == null || !room.players[room.ownerId]) {
+    const remaining = Object.keys(room.players);
+    room.ownerId = fallbackId ?? (remaining.length > 0 ? Number(remaining[0]) : null);
+  }
+}
+
+function sendJoinedConfirmation(ws, room, playerId) {
+  ws.send(
+    JSON.stringify({
+      type: "joined",
+      playerId,
+      roomId: room.id,
+      roomType: room.type,
+      roomCode: room.code,
+      ownerId: room.ownerId,
+      walls,
+      shopZone: SHOP_ZONE,
+      weaponConfig: WEAPON_CONFIG,
+      consumableConfig: CONSUMABLE_CONFIG,
+      roomState: room.state,
+      players: Object.values(room.players).map((p) => ({
+        id: p.id,
+        name: p.name,
+        ready: !!p.ready,
+      })),
+    }),
+  );
+}
+
 export function setupWebsocket(wss) {
   wss.on("connection", (ws) => {
     let playerId = null;
@@ -35,6 +95,7 @@ export function setupWebsocket(wss) {
     ws.on("message", (msg) => {
       const data = JSON.parse(msg);
 
+      // ---- JOIN: assign player to a room ----
       if (
         data.type === "create_lobby" ||
         data.type === "join_public" ||
@@ -60,54 +121,18 @@ export function setupWebsocket(wss) {
         const spawnIdx = getRoomPlayerCount(room) % SPAWN_POINTS.length;
         const spawn = SPAWN_POINTS[spawnIdx];
 
-        room.players[playerId] = {
-        id: playerId,
-        name: data.name || `Player${playerId}`,
-        x: spawn.x,
-        y: spawn.y,
-        health: 100,
-        alive: true,
-        score: 0,
-        ready: data.type === "create_lobby",
-        shooting: false,
-        shootDir: { dx: 1, dy: 0 },
-        lastShotAt: 0,
-        gunIndex: 0,
-        currency: 0,
-          weapons: {
-            pistol:  { owned: true,  level: 1, ammo: Infinity },
-            shotgun: { owned: false, level: 0, ammo: 0 },
-            rifle:   { owned: false, level: 0, ammo: 0 },
-            granata: { owned: false, level: 0, ammo: 0 },
-          },
-          consumables: createConsumableState(),
-          adrenalineBar: 0,
-          channeling: null,
-      };
-        playerRoom[playerId] = room.id;
-
-        ws.send(
-          JSON.stringify({
-            type: "joined",
-            playerId,
-            roomId: room.id,
-            roomType: room.type,
-            roomCode: room.code,
-            ownerId: room.ownerId,
-            walls,
-            shopZone: SHOP_ZONE,
-            weaponConfig: WEAPON_CONFIG,
-            consumableConfig: CONSUMABLE_CONFIG,
-            roomState: room.state,
-            players: Object.values(room.players).map((p) => ({
-              id: p.id,
-              name: p.name,
-              ready: !!p.ready,
-            })),
-          }),
+        room.players[playerId] = createPlayerState(
+          playerId,
+          data.name,
+          spawn,
+          data.type === "create_lobby",
         );
+        playerRoom[playerId] = room.id;
+        ensureRoomOwner(room, room.ownerId ?? playerId);
 
+        sendJoinedConfirmation(ws, room, playerId);
         broadcastLobbyUpdate(room);
+
         if (
           room.type === "public" &&
           Object.keys(room.players).length >= MAX_PLAYERS_PER_ROOM
@@ -122,12 +147,48 @@ export function setupWebsocket(wss) {
         return;
       }
 
+      // ---- REJOIN: "igraj ponovo sa istim igracima" posle game over-a ----
+      if (data.type === "rejoin_room") {
+        const targetRoom = rooms[data.roomId];
+        if (!targetRoom || targetRoom.state === "playing") {
+          ws.send(JSON.stringify({ type: "notJoined" }));
+          return;
+        }
+        clearTimeout(targetRoom.emptyGraceTimer);
+        playerId = playerIdCounter++;
+        playerWs[playerId] = ws;
+
+        const isFirstBack = targetRoom.state === "gameover";
+        if (isFirstBack) {
+          targetRoom.state = "lobby";
+          targetRoom.type = "private";
+          targetRoom.code = generateRoomCode();
+        }
+
+        const spawnIdx = getRoomPlayerCount(targetRoom) % SPAWN_POINTS.length;
+        const spawn = SPAWN_POINTS[spawnIdx];
+
+        // Prvi koji se vrati (onaj ko sobu vraca iz "gameover" u "lobby") je
+        // analogan create_lobby vlasniku - automatski ready, isto kao osnivac sobe.
+        // Svi sledeci koji se prikljucuju istoj sobi i dalje moraju rucno da se ready-uju.
+        targetRoom.players[playerId] = createPlayerState(playerId, data.name, spawn, isFirstBack);        
+        playerRoom[playerId] = targetRoom.id;
+        ensureRoomOwner(targetRoom, null);
+
+        sendJoinedConfirmation(ws, targetRoom, playerId);
+        broadcastLobbyUpdate(targetRoom);
+        console.log(`Player ${playerId} (${data.name}) rejoined room ${targetRoom.id}`);
+        return;
+      }
+
+      // All subsequent messages require playerId to be set
       if (!playerId) return;
 
       const room = rooms[playerRoom[playerId]];
       if (!room) return;
       const p = room.players[playerId];
 
+      // ---- SET READY ----
       if (data.type === "set_ready") {
         if (!room.players[playerId]) return;
         room.players[playerId].ready = !!data.ready;
@@ -135,11 +196,13 @@ export function setupWebsocket(wss) {
         return;
       }
 
+      // ---- PING/PONG ----
       if (data.type === "ping") {
         ws.send(JSON.stringify({ type: "pong", sentAt: data.sentAt }));
         return;
       }
 
+      // ---- START GAME ----
       if (data.type === "start_game") {
         if (room.state !== "lobby") return;
         if (room.ownerId !== playerId) {
@@ -164,6 +227,7 @@ export function setupWebsocket(wss) {
         return;
       }
 
+      // ---- IN-GAME ACTIONS ----
       if (room.state !== "playing") return;
       if (!p || !p.alive) return;
 
@@ -212,31 +276,31 @@ export function setupWebsocket(wss) {
       }
 
       if (data.type === "buy_weapon" || data.type === "upgrade_weapon" || data.type === "buy_ammo") {
-      const inZone =
-        p.x < SHOP_ZONE.x + SHOP_ZONE.w && p.x + 20 > SHOP_ZONE.x &&
-        p.y < SHOP_ZONE.y + SHOP_ZONE.h && p.y + 20 > SHOP_ZONE.y;
-      if (!inZone) return;
+        const inZone =
+          p.x < SHOP_ZONE.x + SHOP_ZONE.w && p.x + 20 > SHOP_ZONE.x &&
+          p.y < SHOP_ZONE.y + SHOP_ZONE.h && p.y + 20 > SHOP_ZONE.y;
+        if (!inZone) return;
 
-      const cfg = WEAPON_CONFIG[data.weapon];
-      const st = p.weapons[data.weapon];
-      if (!cfg || !st) return;
+        const cfg = WEAPON_CONFIG[data.weapon];
+        const st = p.weapons[data.weapon];
+        if (!cfg || !st) return;
 
-      if (data.type === "buy_weapon" && !st.owned && p.currency >= cfg.unlockCost) {
-        p.currency -= cfg.unlockCost;
-        st.owned = true;
-        st.level = 1;
-        st.ammo = cfg.infiniteAmmo ? Infinity : Math.round(cfg.ammoPerBuy / 2);
+        if (data.type === "buy_weapon" && !st.owned && p.currency >= cfg.unlockCost) {
+          p.currency -= cfg.unlockCost;
+          st.owned = true;
+          st.level = 1;
+          st.ammo = cfg.infiniteAmmo ? Infinity : Math.round(cfg.ammoPerBuy / 2);
+        }
+        if (data.type === "upgrade_weapon" && st.owned && st.level < cfg.maxLevel) {
+          const cost = upgradeCostAtLevel(cfg, st.level);
+          if (p.currency >= cost) { p.currency -= cost; st.level += 1; }
+        }
+        if (data.type === "buy_ammo" && st.owned && !cfg.infiniteAmmo && p.currency >= cfg.ammoCost) {
+          p.currency -= cfg.ammoCost;
+          st.ammo += cfg.ammoPerBuy;
+        }
+        return;
       }
-      if (data.type === "upgrade_weapon" && st.owned && st.level < cfg.maxLevel) {
-        const cost = upgradeCostAtLevel(cfg, st.level);
-        if (p.currency >= cost) { p.currency -= cost; st.level += 1; }
-      }
-      if (data.type === "buy_ammo" && st.owned && !cfg.infiniteAmmo && p.currency >= cfg.ammoCost) {
-        p.currency -= cfg.ammoCost;
-        st.ammo += cfg.ammoPerBuy;
-      }
-      return;
-    }
 
       if (data.type === "buy_consumable") {
         const inZone =
@@ -261,17 +325,31 @@ export function setupWebsocket(wss) {
       const roomId = playerRoom[playerId];
       const room = rooms[roomId];
       if (room) {
+        const wasOwner = room.ownerId === playerId;
         delete room.players[playerId];
         console.log(`Player ${playerId} left room ${roomId}`);
 
-        if (room.state === "lobby") {
-          broadcastLobbyUpdate(room);
-        }
-
         if (Object.keys(room.players).length === 0) {
           stopGameLoop(room);
-          delete rooms[roomId];
-          console.log(`Room ${roomId} removed (empty)`);
+          if (room.state === "gameover") {
+            // Igraci sa game-over ekrana upravo rekonektuju (stara konekcija se gasi
+            // PRE nego sto nova posalje rejoin_room) - ostavi sobi kratak prozor.
+            clearTimeout(room.emptyGraceTimer);
+            room.emptyGraceTimer = setTimeout(() => {
+              if (rooms[roomId] && Object.keys(rooms[roomId].players).length === 0) {
+                delete rooms[roomId];
+                console.log(`Room ${roomId} removed (empty, gameover grace expired)`);
+              }
+            }, 15000);
+          } else {
+            delete rooms[roomId];
+            console.log(`Room ${roomId} removed (empty)`);
+          }
+        } else {
+          if (wasOwner) ensureRoomOwner(room, null);
+          if (room.state === "lobby") {
+            broadcastLobbyUpdate(room);
+          }
         }
       }
       delete playerRoom[playerId];

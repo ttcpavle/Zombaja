@@ -107,6 +107,7 @@
         </div>
         <div id="adrenalineBarWrap"><div id="adrenalineBarFill"></div></div>
         <div id="leaderboard"></div>
+        <div id="spectateBanner"></div>
         <div id="toastBanner"></div>
         <div id="waveOverlay">
           <div class="death-title">wave 1</div>
@@ -133,11 +134,26 @@
           </div>
         </div>
         <div id="controls">
-          WASD - Move // RMB - Shoot // 1-4 / scroll - Weapon // E/R/T - Medkit/Adrenalin/SPAS
+          WASD - Move // RMB - Shoot // 1-4/scroll - Weapon // Q/R/T - Medkit/Adrenalin/SPAS // E - Shop
         </div>
         <div id="actionBar">
           <div id="weaponIcons"></div>
           <div id="consumableIcons"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="gameOverScreen" class="screen">
+      <div class="lobby-container">
+        <div class="lobby-header">
+          <div class="lobby-title">Kraj Igre</div>
+          <div class="room-badge">WAVE <span id="goWave">--</span></div>
+        </div>
+        <div class="player-list" id="gameOverList"></div>
+        <div class="lobby-footer">
+          <button class="btn-primary" onclick="quickGame()">Nova igra</button>
+          <button class="btn-secondary" onclick="playAgainSamePlayers()">Igraj ponovo (isti igraci)</button>
+          <button class="btn-secondary" onclick="backToMainMenu()">Glavni meni</button>
         </div>
       </div>
     </div>

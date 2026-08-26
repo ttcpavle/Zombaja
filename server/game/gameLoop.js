@@ -1,6 +1,7 @@
 import { updateZombies, spawnZombie, zombieTypes, updateFireZones } from "./zombies.js";
 import { updateBullets, checkCollisions } from "./bullets.js";
 import { updateConsumables } from "./consumables.js";
+import { respawnPlayer } from "./playerLifecycle.js";
 import { broadcastRoomState, broadcastToRoom } from "./broadcast.js";
 import { processShooting } from "./guns.js";
 
@@ -115,6 +116,9 @@ function checkWaveProgress(room) {
     if (player.alive) {
       player.score += bonus;
       player.currency += bonus;
+    } else {
+      // Mrtav igrac ceka bas ovaj trenutak - kraj runde koju je ostatak tima preziveo bez njega.
+      respawnPlayer(player);
     }
   });
 
@@ -129,6 +133,32 @@ function checkWaveProgress(room) {
     room.wave += 1;
     startWave(room);
   }, 8000);
+}
+
+function isRoomWiped(room) {
+  const players = Object.values(room.players);
+  return players.length > 0 && players.every((p) => !p.alive);
+}
+
+function triggerGameOver(room) {
+  room.state = "gameover";
+  stopGameLoop(room);
+  room.zombies = [];
+  room.bullets = [];
+  room.fireZones = [];
+
+  const results = Object.values(room.players)
+    .map((p) => ({ id: p.id, name: p.name, score: p.score }))
+    .sort((a, b) => b.score - a.score);
+
+  broadcastToRoom(room, {
+    type: "game_over",
+    results,
+    wave: room.wave,
+    roomId: room.id,
+  });
+
+  console.log(`Room ${room.id} game over (wave ${room.wave})`);
 }
 
 export function startGameLoop(room) {
@@ -149,6 +179,12 @@ export function startGameLoop(room) {
     updateFireZones(room);
     updateBullets(room, dt);
     checkCollisions(room);
+
+    if (isRoomWiped(room)) {
+      triggerGameOver(room);
+      return;
+    }
+
     checkWaveProgress(room);
     broadcastRoomState(room);
   }, 30);

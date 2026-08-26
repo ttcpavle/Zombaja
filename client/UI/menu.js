@@ -1,5 +1,6 @@
 import { state } from '../connection/gameState.js';
 import { connect, sendPing } from '../connection/websocketManager.js';
+import { showScreen } from './screenManager.js';
 
 export function createPrivateLobby() {
     const name = document.getElementById('nameInput').value.trim();
@@ -79,11 +80,49 @@ export function joinGame() {
         }
     };
 }
-/*
-document.getElementById('nameInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') joinRandomGame();
-});*/
+
+// Zove se sa game-over ekrana - potpuno nova javna soba, nasumicni saigraci.
+// NAPOMENA: gasi staru ws konekciju i odmah otvara novu; postoji teorijska
+// trka gde stari onclose handler (koji resetuje state.playerId/roomId/...)
+// moze da se izvrsi tek POSLE sto nova konekcija vec dobije "joined" odgovor,
+// sto moze izazvati kratak vizuelni "trzaj" nazad ka meniju. Bezopasno, samo kozmeticki.
+export function quickGame() {
+    const name = state.playerName;
+    if (state.ws) state.ws.close();
+    connect();
+    state.ws.onopen = () => {
+        state.ws.send(JSON.stringify({ type: 'join_public', name }));
+        if (!state.pingInterval) {
+            sendPing();
+            state.pingInterval = setInterval(sendPing, 1000);
+        }
+    };
+}
+
+// Zove se sa game-over ekrana - vraca te u ISTU sobu (po roomId) da bi
+// mogao da sacekas/igras opet sa istim ljudima koji takodje kliknu ovo.
+export function playAgainSamePlayers() {
+    const roomId = state.roomId;
+    const name = state.playerName;
+    if (state.ws) state.ws.close();
+    connect();
+    state.ws.onopen = () => {
+        state.ws.send(JSON.stringify({ type: 'rejoin_room', roomId, name }));
+        if (!state.pingInterval) {
+            sendPing();
+            state.pingInterval = setInterval(sendPing, 1000);
+        }
+    };
+}
+
+export function backToMainMenu() {
+    if (state.ws) state.ws.close();
+    showScreen('menuScreen');
+}
 
 window.createPrivateLobby = createPrivateLobby;
 window.joinRandomGame = joinRandomGame;
 window.joinGame = joinGame;
+window.quickGame = quickGame;
+window.playAgainSamePlayers = playAgainSamePlayers;
+window.backToMainMenu = backToMainMenu;

@@ -158,13 +158,18 @@ canvas.addEventListener(
   { passive: false },
 );
 
-// 1-4 za oruzje, E/R/T za consumables (medkit/adrenalin/spas), E i za shop, esc za shop
+// E = SAMO shop (bez obzira na zonu van nje ne radi nista).
+// Q/R/T = medkit/adrenalin/spas, rade svuda dok igrac zivi.
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
 
   if (e.code === "KeyE") {
     if (isShopOpen()) return;
-    if (isInShopZone()) { openShop(); return; }
+    if (isInShopZone()) openShop();
+    return;
+  }
+  if (e.code === "KeyQ") {
+    if (isShopOpen()) return;
     useConsumable("medkit");
     return;
   }
@@ -199,7 +204,7 @@ function movePlayer() {
 
   let speed = 3;
   if (me.channeling) speed *= 0.5;
-  if (me.adrenalineBar) speed *= 1 + 0.30 * me.adrenalineBar; // 0.30 = ADRENALIN_MAX_SPEED_BONUS na serveru (consumables.js) - drzati u sinhronizaciji
+  if (me.adrenalineBar) speed *= 1 + 0.30 * me.adrenalineBar; // 0.30 = ADRENALIN_MAX_SPEED_BONUS na serveru (consumables.js) - drzati sinhronizovano
 
   let dx = 0,
     dy = 0;

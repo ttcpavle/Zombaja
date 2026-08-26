@@ -21,6 +21,7 @@ export function broadcastRoomState(room) {
     players: room.players,
     zombies: room.zombies,
     bullets: room.bullets,
+    fireZones: room.fireZones || [],
     wave: room.wave,
     waveActive: !!room.waveActive,
     waveSpawned: room.waveSpawned,

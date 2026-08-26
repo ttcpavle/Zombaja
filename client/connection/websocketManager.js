@@ -11,7 +11,7 @@ import {
   handlePlayerDamage,
   startBackgroundMusic,
 } from "./gameState.js";
-import { updateLobbyPlayers, updatePingDisplay } from "../UI/lobby.js";
+import { updateLobbyPlayers, updatePingDisplay, renderGameOverResults } from "../UI/lobby.js";
 import { isShopOpen, renderShop } from "../UI/shop.js";
 import { renderActionBar, showToast } from "../UI/hud.js";
 
@@ -34,6 +34,7 @@ export function connect() {
 
     if (data.type === "notJoined") {
       document.getElementById("codeInput").value = "ne valja kod!!";
+      showScreen("menuScreen");
       return;
     }
 
@@ -71,6 +72,12 @@ export function connect() {
       showScreen("gameScreen");
       startBackgroundMusic();
       state.gameStartedAt = data.startedAt || Date.now();
+      return;
+    }
+
+    if (data.type === "game_over") {
+      showScreen("gameOverScreen");
+      renderGameOverResults(data.results, data.wave);
       return;
     }
 
@@ -127,7 +134,7 @@ export function connect() {
     state.playerId = null;
     state.roomId = null;
     state.walls = [];
-    state.gameState = { players: {}, zombies: [], bullets: [] };
+    state.gameState = { players: {}, zombies: [], bullets: [], fireZones: [] };
     state.gameStartedAt = null;
     document.getElementById("roomCode").textContent = "";
     clearInterval(state.pingInterval);

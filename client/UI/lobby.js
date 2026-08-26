@@ -60,6 +60,25 @@ export function updateLobbyPlayers(players, ownerId, roomType = 'private') {
     }
 }
 
+export function renderGameOverResults(results, wave) {
+    const list = document.getElementById('gameOverList');
+    const waveEl = document.getElementById('goWave');
+    if (waveEl) waveEl.textContent = wave ?? '--';
+    if (!list) return;
+    list.innerHTML = '';
+    results.forEach((r, i) => {
+        const row = document.createElement('div');
+        row.className = 'go-row';
+        const isMe = r.id == state.playerId;
+        row.innerHTML = `
+            <div class="go-rank">#${i + 1}</div>
+            <div class="go-name">${escHtml(r.name)}${isMe ? ' <span class="you-tag">YOU</span>' : ''}</div>
+            <div class="go-score">${r.score}</div>
+        `;
+        list.appendChild(row);
+    });
+}
+
 function toggleReady() {
     if (!state.ws || state.ws.readyState !== 1) return;
     const mySlot = Array.from(document.querySelectorAll('#playerList .player-slot')).find(slot => slot.querySelector('.you-tag'));
