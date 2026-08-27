@@ -5,6 +5,8 @@ import { respawnPlayer } from "./playerLifecycle.js";
 import { broadcastRoomState, broadcastToRoom } from "./broadcast.js";
 import { processShooting } from "./guns.js";
 
+const GAMBLING_COOLDOWN_WAVES = 4; // tunable 3-5   <-- PREMESTI OVDE
+
 function logBase(value, base) {
   return Math.log(value) / Math.log(base);
 }
@@ -14,7 +16,6 @@ function getWaveConfig(waveNum) {
   const baseRunners = Math.max(0, logBase(waveNum - 1, 1.04) + waveNum / 5);
   const baseTanks = Math.max(0, logBase(waveNum - 8, 1.02) + waveNum / 10);//8 umesto 2 je bilo
   const baseExplodes = Math.max(0, logBase(waveNum - 19, 1.05) + waveNum / 2);//ovde 19
-
   return {
     zombies: {
       default: Math.max(1, baseDefaults),
@@ -100,10 +101,20 @@ function checkWaveProgress(room) {
 
   if (!room.waveSpawningComplete) return;
 
+  // Racunaj glasove PRE respawn-a, da respawn ne pokvari/nasumicno napravi jednoglasnost
+  const aliveBeforeRespawn = Object.values(room.players).filter((p) => p.alive);
+  const wantsGambling =
+    !room.gamblingMode &&
+    room.gamblingCooldownWaves <= 0 &&
+    aliveBeforeRespawn.length > 0 &&
+    aliveBeforeRespawn.every((p) => room.gamblingVotes.has(p.id));
+
   const timeSinceSpawningEnded =
     Date.now() - (room.waveSpawningEndedAt || Date.now());
+  // Ako svi hoce gambling, iskljuci 20s "spasilacki" tajmer - runda mora STVARNO
+  // da se zavrsi (svi zombiji mrtvi) pre nego sto krene kockanje.
   const canEndWave =
-    room.zombies.length === 0 || timeSinceSpawningEnded >= 20000;
+    room.zombies.length === 0 || (!wantsGambling && timeSinceSpawningEnded >= 20000);
 
   if (!canEndWave) return;
 
@@ -117,22 +128,41 @@ function checkWaveProgress(room) {
       player.score += bonus;
       player.currency += bonus;
     } else {
-      // Mrtav igrac ceka bas ovaj trenutak - kraj runde koju je ostatak tima preziveo bez njega.
       respawnPlayer(player);
     }
   });
 
-  broadcastToRoom(room, {
-    type: "wave_complete",
-    wave: room.wave,
-    bonus,
-  });
+  broadcastToRoom(room, { type: "wave_complete", wave: room.wave, bonus });
+
+  if (room.gamblingCooldownWaves > 0) room.gamblingCooldownWaves -= 1;
+
+  if (wantsGambling) {
+    room.gamblingMode = true;
+    room.gamblingVotes.clear(); // isti glasovi se sad koriste za "zelim da IZADJEM"
+    broadcastToRoom(room, { type: "gambling_started" });
+    return; // nema waveTransitionTimer dok traje gambling
+  }
 
   room.waveTransitionTimer = setTimeout(() => {
     if (!room || room.state !== "playing") return;
     room.wave += 1;
     startWave(room);
   }, 8000);
+}
+
+export function evaluateGamblingVote(room) {
+  if (!room.gamblingMode) return;
+  const alivePlayers = Object.values(room.players).filter((p) => p.alive);
+  const allWantOut = alivePlayers.length > 0 && alivePlayers.every((p) => room.gamblingVotes.has(p.id));
+  if (!allWantOut) return;
+
+  room.gamblingMode = false;
+  room.gamblingVotes.clear();
+  room.gamblingCooldownWaves = GAMBLING_COOLDOWN_WAVES;
+  broadcastToRoom(room, { type: "gambling_ended" });
+
+  room.wave += 1;
+  startWave(room);
 }
 
 function isRoomWiped(room) {
@@ -191,6 +221,9 @@ export function startGameLoop(room) {
 
   room.spawnCount = 0;
   room.spawnDelay = 3000;
+  room.gamblingMode = false;
+  room.gamblingVotes = new Set();
+  room.gamblingCooldownWaves = 0;
   room.wave = 1;
   room.waveActive = false;
   room.waveSpawningComplete = false;

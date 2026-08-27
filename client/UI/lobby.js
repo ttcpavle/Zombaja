@@ -3,6 +3,7 @@ import { state } from '../connection/gameState.js';
 import {
     PLAYER_COLORS
 } from '../constants.js';
+import { unmountRoulette } from '../UI/roulette.js';
 
 function escHtml(str) {
     return String(str)
@@ -95,6 +96,7 @@ function startGame() {
 }
 
 function leaveRoom() {
+    unmountRoulette();
     if (state.ws) state.ws.close();
     showScreen('menuScreen');
 }

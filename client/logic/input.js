@@ -2,7 +2,7 @@ import { CANVAS_W, CANVAS_H, GAME_W, GAME_H } from "../constants.js";
 import { state, resumeAudioContext } from "../connection/gameState.js";
 import { camX, camY } from "../UI/draw.js";
 import { isInShopZone, isShopOpen, openShop, closeShop, updateShopPrompt } from "../UI/shop.js";
-
+import { isRouletteMounted } from "../UI/roulette.js";
 const canvas = document.getElementById("game");
 const keys = {};
 const mouseState = {
@@ -183,6 +183,12 @@ window.addEventListener("keydown", (e) => {
     useConsumable("spas");
     return;
   }
+  if (e.code === "KeyG") {
+    if (isShopOpen()) return;
+    if (!state.ws || state.ws.readyState !== 1) return;
+    state.ws.send(JSON.stringify({ type: "toggle_gambling_vote" }));
+    return;
+  }
   if (e.code === "Escape") {
     if (isShopOpen()) closeShop();
     return;
@@ -199,6 +205,7 @@ window.addEventListener("keydown", (e) => {
 function movePlayer() {
   updateShopPrompt();
   if (isShopOpen()) return;
+  if (isRouletteMounted()) return;
   const me = state.gameState.players[state.playerId];
   if (!me || !me.alive || !state.ws || state.ws.readyState !== 1) return;
 

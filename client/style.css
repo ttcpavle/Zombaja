@@ -794,3 +794,13 @@ button.shop-btn.secondary:hover { border-color: var(--accent); color: var(--acce
   z-index: 20;
 }
 #spectateBanner.visible { display: block; }
+
+#gamblingOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  align-items: center;
+  justify-content: center;
+}
+#gamblingOverlay.visible { display: flex; }

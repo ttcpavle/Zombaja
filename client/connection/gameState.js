@@ -1,3 +1,4 @@
+import { mountRoulette, unmountRoulette } from "../UI/roulette.js";
 import {
   CANVAS_W,
   CANVAS_H,
@@ -35,6 +36,7 @@ export const state = {
   spectateTargetId: null,
   wasAlive: true,
   deathOverlayTimeout: null,
+  wasGambling: false,
 };
 
 const audioAssetPaths = {
@@ -340,6 +342,25 @@ export function syncGameState(data) {
       0,
       Math.ceil(me.health),
     );
+
+    const gEl = document.getElementById('hudGamblingText');
+    if (gEl) {
+      if (data.gamblingMode) {
+        gEl.textContent = `IZLAZAK ${(data.gamblingVoterIds || []).length}/${data.gamblingEligible}`;
+      } else if (data.gamblingCooldownWaves > 0) {
+        gEl.textContent = `CD ${data.gamblingCooldownWaves}`;
+      } else {
+        gEl.textContent = `${(data.gamblingVoterIds || []).length}/${data.gamblingEligible}`;
+      }
+    }
+
+    if (data.gamblingMode && !state.wasGambling) {
+      mountRoulette(me ? me.currency : 0, () => {});
+    }
+    if (!data.gamblingMode && state.wasGambling) {
+      unmountRoulette();
+    }
+    state.wasGambling = !!data.gamblingMode;
 
     if (!me.alive && state.wasAlive) {
       // bas sad umro - kratak "You Died" flash, pa spectate preuzima

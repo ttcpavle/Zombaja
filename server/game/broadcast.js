@@ -29,6 +29,10 @@ export function broadcastRoomState(room) {
     waveSpawningComplete: !!room.waveSpawningComplete,
     waveSpawningEndedAt: room.waveSpawningEndedAt,
     startedAt: room.startedAt,
+    gamblingMode: !!room.gamblingMode,
+    gamblingVoterIds: room.gamblingVotes ? Array.from(room.gamblingVotes) : [],
+    gamblingEligible: Object.values(room.players).filter((p) => p.alive).length,
+    gamblingCooldownWaves: room.gamblingCooldownWaves || 0,
   });
 }
 

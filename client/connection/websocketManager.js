@@ -14,6 +14,7 @@ import {
 import { updateLobbyPlayers, updatePingDisplay, renderGameOverResults } from "../UI/lobby.js";
 import { isShopOpen, renderShop } from "../UI/shop.js";
 import { renderActionBar, showToast } from "../UI/hud.js";
+import { unmountRoulette } from '../UI/roulette.js';
 
 function buildSpasMessage(data) {
   if (!data.victimId) {
@@ -130,12 +131,14 @@ export function connect() {
   };
 
   state.ws.onclose = () => {
+    unmountRoulette();
     showScreen("menuScreen");
     state.playerId = null;
     state.roomId = null;
     state.walls = [];
     state.gameState = { players: {}, zombies: [], bullets: [], fireZones: [] };
     state.gameStartedAt = null;
+    state.wasGambling = false;
     document.getElementById("roomCode").textContent = "";
     clearInterval(state.pingInterval);
     state.pingInterval = null;

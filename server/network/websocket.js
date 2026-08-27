@@ -10,7 +10,7 @@ import {
 } from "../rooms/roomManager.js";
 import { checkWallCollision } from "../utils.js";
 import { SPAWN_POINTS, walls } from "../world/map.js";
-import { startGameLoop, stopGameLoop } from "../game/gameLoop.js";
+import { startGameLoop, stopGameLoop, evaluateGamblingVote } from "../game/gameLoop.js";
 import { broadcastToRoom, broadcastLobbyUpdate } from "../game/broadcast.js";
 import {
   GAME_WIDTH,
@@ -271,6 +271,21 @@ export function setupWebsocket(wss) {
       if (data.type === "use_consumable") {
         if (data.item === "medkit" || data.item === "adrenalin" || data.item === "spas") {
           startConsumableUse(room, p, data.item);
+        }
+        return;
+      }
+
+      if (data.type === "toggle_gambling_vote") {
+        if (!room.gamblingVotes) room.gamblingVotes = new Set();
+        if (room.gamblingVotes.has(playerId)) room.gamblingVotes.delete(playerId);
+        else room.gamblingVotes.add(playerId);
+        evaluateGamblingVote(room);
+        return;
+      }
+
+      if (data.type === "cashout_gambling") {
+        if (typeof data.finalBalance === "number" && Number.isFinite(data.finalBalance)) {
+          p.currency = Math.max(0, Math.floor(data.finalBalance));
         }
         return;
       }

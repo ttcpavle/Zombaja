@@ -1,6 +1,7 @@
 import { state } from '../connection/gameState.js';
 import { connect, sendPing } from '../connection/websocketManager.js';
 import { showScreen } from './screenManager.js';
+import { unmountRoulette } from '../UI/roulette.js';
 
 export function createPrivateLobby() {
     const name = document.getElementById('nameInput').value.trim();
@@ -87,6 +88,7 @@ export function joinGame() {
 // moze da se izvrsi tek POSLE sto nova konekcija vec dobije "joined" odgovor,
 // sto moze izazvati kratak vizuelni "trzaj" nazad ka meniju. Bezopasno, samo kozmeticki.
 export function quickGame() {
+    unmountRoulette();
     const name = state.playerName;
     if (state.ws) state.ws.close();
     connect();
@@ -102,6 +104,7 @@ export function quickGame() {
 // Zove se sa game-over ekrana - vraca te u ISTU sobu (po roomId) da bi
 // mogao da sacekas/igras opet sa istim ljudima koji takodje kliknu ovo.
 export function playAgainSamePlayers() {
+    unmountRoulette();
     const roomId = state.roomId;
     const name = state.playerName;
     if (state.ws) state.ws.close();
@@ -116,6 +119,7 @@ export function playAgainSamePlayers() {
 }
 
 export function backToMainMenu() {
+    unmountRoulette();
     if (state.ws) state.ws.close();
     showScreen('menuScreen');
 }
