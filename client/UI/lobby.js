@@ -76,6 +76,11 @@ function startGame() {
 }
 
 function leaveRoom() {
+    state.intentionalClose = true;
+    sessionStorage.removeItem('zombajaResumeToken');
+    if (state.ws && state.ws.readyState === 1) {
+        state.ws.send(JSON.stringify({ type: 'leave' }));
+    }
     if (state.ws) state.ws.close();
     showScreen('menuScreen');
 }

@@ -13,16 +13,16 @@ export function createPrivateLobby() {
     document.getElementById('createBtn').disabled = true;
     document.getElementById('createBtn').textContent = 'Connecting...';
 
-    connect();
-    state.ws.onopen = () => {
-        state.ws.send(JSON.stringify({ type: 'create_lobby', name: state.playerName }));
+    sessionStorage.removeItem('zombajaResumeToken');
+    connect((ws) => {
+        ws.send(JSON.stringify({ type: 'create_lobby', name: state.playerName }));
         document.getElementById('createBtn').disabled = false;
         document.getElementById('createBtn').textContent = 'Create private lobby';
         if (!state.pingInterval) {
             sendPing();
             state.pingInterval = setInterval(sendPing, 1000);
         }
-    };
+    });
 }
 
 export function joinRandomGame() {
@@ -37,16 +37,16 @@ export function joinRandomGame() {
     document.getElementById('randomBtn').disabled = true;
     document.getElementById('randomBtn').textContent = 'Connecting...';
 
-    connect();
-    state.ws.onopen = () => {
-        state.ws.send(JSON.stringify({ type: 'join_public', name: state.playerName }));
+    sessionStorage.removeItem('zombajaResumeToken');
+    connect((ws) => {
+        ws.send(JSON.stringify({ type: 'join_public', name: state.playerName }));
         document.getElementById('randomBtn').disabled = false;
         document.getElementById('randomBtn').textContent = 'Join random public game';
         if (!state.pingInterval) {
             sendPing();
             state.pingInterval = setInterval(sendPing, 1000);
         }
-    };
+    });
 }
 
 export function joinGame() {
@@ -68,16 +68,16 @@ export function joinGame() {
     document.getElementById('codeBtn').disabled = true;
     document.getElementById('codeBtn').textContent = 'Joining...';
 
-    connect();
-    state.ws.onopen = () => {
-        state.ws.send(JSON.stringify({ type: 'join', name: state.playerName, code }));
+    sessionStorage.removeItem('zombajaResumeToken');
+    connect((ws) => {
+        ws.send(JSON.stringify({ type: 'join', name: state.playerName, code }));
         document.getElementById('codeBtn').disabled = false;
         document.getElementById('codeBtn').textContent = 'Join existing lobby';
         if (!state.pingInterval) {
             sendPing();
             state.pingInterval = setInterval(sendPing, 1000);
         }
-    };
+    });
 }
 /*
 document.getElementById('nameInput').addEventListener('keydown', e => {

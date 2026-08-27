@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {
   createRoom,
   findAvailableRoom,
@@ -27,6 +28,63 @@ import {
 } from "../game/consumables.js";
 
 let playerIdCounter = 1;
+const RECONNECT_GRACE_MS = 20_000;
+const resumeSessions = new Map();
+
+function hashResumeToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function createResumeSession(playerId) {
+  const token = crypto.randomBytes(32).toString("hex");
+  resumeSessions.set(hashResumeToken(token), { playerId, timer: null, expiresAt: null });
+  return token;
+}
+
+function sendJoined(ws, room, playerId, resumeToken) {
+  ws.send(JSON.stringify({
+    type: "joined",
+    playerId,
+    roomId: room.id,
+    roomType: room.type,
+    roomCode: room.code,
+    ownerId: room.ownerId,
+    resumeToken,
+    walls,
+    shopZone: SHOP_ZONE,
+    weaponConfig: WEAPON_CONFIG,
+    consumableConfig: CONSUMABLE_CONFIG,
+    roomState: room.state,
+    players: Object.values(room.players).map((p) => ({
+      id: p.id,
+      name: p.name,
+      ready: !!p.ready,
+      connected: p.connected !== false,
+    })),
+  }));
+}
+
+function removePlayer(playerId) {
+  const roomId = playerRoom[playerId];
+  const room = rooms[roomId];
+  if (room) {
+    delete room.players[playerId];
+    if (room.state === "lobby") broadcastLobbyUpdate(room);
+    if (Object.keys(room.players).length === 0) {
+      stopGameLoop(room);
+      delete rooms[roomId];
+      console.log(`Room ${roomId} removed (empty)`);
+    }
+  }
+  delete playerRoom[playerId];
+  delete playerWs[playerId];
+  for (const [tokenHash, session] of resumeSessions) {
+    if (session.playerId === playerId) {
+      if (session.timer) clearTimeout(session.timer);
+      resumeSessions.delete(tokenHash);
+    }
+  }
+}
 
 export function setupWebsocket(wss) {
   wss.on("connection", (ws) => {
@@ -35,13 +93,37 @@ export function setupWebsocket(wss) {
     ws.on("message", (msg) => {
       const data = JSON.parse(msg);
 
+      if (data.type === "resume") {
+        const session = typeof data.resumeToken === "string"
+          ? resumeSessions.get(hashResumeToken(data.resumeToken))
+          : null;
+        const room = session ? rooms[playerRoom[session.playerId]] : null;
+        const player = session && room ? room.players[session.playerId] : null;
+        if (!session || !room || !player || (session.expiresAt && session.expiresAt < Date.now())) {
+          ws.send(JSON.stringify({ type: "resume_failed" }));
+          return;
+        }
+
+        if (session.timer) clearTimeout(session.timer);
+        session.timer = null;
+        session.expiresAt = null;
+        playerId = session.playerId;
+        const previousWs = playerWs[playerId];
+        if (previousWs && previousWs !== ws) previousWs.close();
+        player.connected = true;
+        player.disconnectedAt = null;
+        playerWs[playerId] = ws;
+        sendJoined(ws, room, playerId, data.resumeToken);
+        broadcastLobbyUpdate(room);
+        return;
+      }
+
       if (
         data.type === "create_lobby" ||
         data.type === "join_public" ||
         data.type === "join"
       ) {
         playerId = playerIdCounter++;
-        playerWs[playerId] = ws;
 
         let room;
         if (data.type === "create_lobby") {
@@ -83,29 +165,14 @@ export function setupWebsocket(wss) {
           consumables: createConsumableState(),
           adrenalineBar: 0,
           channeling: null,
+          connected: true,
+          disconnectedAt: null,
       };
         playerRoom[playerId] = room.id;
+          playerWs[playerId] = ws;
+          const resumeToken = createResumeSession(playerId);
 
-        ws.send(
-          JSON.stringify({
-            type: "joined",
-            playerId,
-            roomId: room.id,
-            roomType: room.type,
-            roomCode: room.code,
-            ownerId: room.ownerId,
-            walls,
-            shopZone: SHOP_ZONE,
-            weaponConfig: WEAPON_CONFIG,
-            consumableConfig: CONSUMABLE_CONFIG,
-            roomState: room.state,
-            players: Object.values(room.players).map((p) => ({
-              id: p.id,
-              name: p.name,
-              ready: !!p.ready,
-            })),
-          }),
-        );
+          sendJoined(ws, room, playerId, resumeToken);
 
         broadcastLobbyUpdate(room);
         if (
@@ -123,6 +190,12 @@ export function setupWebsocket(wss) {
       }
 
       if (!playerId) return;
+
+      if (data.type === "leave") {
+        removePlayer(playerId);
+        playerId = null;
+        return;
+      }
 
       const room = rooms[playerRoom[playerId]];
       if (!room) return;
@@ -148,7 +221,9 @@ export function setupWebsocket(wss) {
           );
           return;
         }
-        const players = Object.values(room.players);
+        const players = Object.values(room.players).filter(
+          (player) => player.connected !== false,
+        );
         const allReady = players.length > 0 && players.every((p) => p.ready);
         if (!allReady) {
           ws.send(
@@ -258,24 +333,22 @@ export function setupWebsocket(wss) {
 
     ws.on("close", () => {
       if (!playerId) return;
+      if (playerWs[playerId] !== ws) return;
       const roomId = playerRoom[playerId];
       const room = rooms[roomId];
-      if (room) {
-        delete room.players[playerId];
-        console.log(`Player ${playerId} left room ${roomId}`);
+      const player = room?.players[playerId];
+      const tokenSession = [...resumeSessions.values()].find((session) => session.playerId === playerId);
+      if (!room || !player || !tokenSession) return;
 
-        if (room.state === "lobby") {
-          broadcastLobbyUpdate(room);
-        }
-
-        if (Object.keys(room.players).length === 0) {
-          stopGameLoop(room);
-          delete rooms[roomId];
-          console.log(`Room ${roomId} removed (empty)`);
-        }
-      }
-      delete playerRoom[playerId];
       delete playerWs[playerId];
+      player.connected = false;
+      player.disconnectedAt = Date.now();
+      player.shooting = false;
+      player.channeling = null;
+      tokenSession.expiresAt = Date.now() + RECONNECT_GRACE_MS;
+      tokenSession.timer = setTimeout(() => removePlayer(playerId), RECONNECT_GRACE_MS);
+      broadcastLobbyUpdate(room);
+      console.log(`Player ${playerId} disconnected; grace period started`);
     });
   });
 }

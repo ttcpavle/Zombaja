@@ -15,6 +15,10 @@ import { updateLobbyPlayers, updatePingDisplay } from "../UI/lobby.js";
 import { isShopOpen, renderShop } from "../UI/shop.js";
 import { renderActionBar, showToast } from "../UI/hud.js";
 
+const RESUME_TOKEN_KEY = "zombajaResumeToken";
+const RECONNECT_GRACE_MS = 20_000;
+let freshJoinHandler = null;
+
 function buildSpasMessage(data) {
   if (!data.victimId) {
     return `${data.userName} je aktivirao/la SPAS pilulu.`;
@@ -25,11 +29,51 @@ function buildSpasMessage(data) {
   return `${data.victimName} je nastradao/la umesto ${data.userName}!`;
 }
 
-export function connect() {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  state.ws = new WebSocket(`${proto}://${location.host}`);
+function resetConnectionState() {
+  showScreen("menuScreen");
+  state.playerId = null;
+  state.roomId = null;
+  state.roomOwnerId = null;
+  state.walls = [];
+  state.gameState = { players: {}, zombies: [], bullets: [] };
+  state.gameStartedAt = null;
+  document.getElementById("roomCode").textContent = "";
+  clearInterval(state.pingInterval);
+  state.pingInterval = null;
+  state.currentPing = null;
+  updatePingDisplay();
+}
 
-  state.ws.onmessage = (msg) => {
+function scheduleReconnect() {
+  if (state.reconnectTimer || state.intentionalClose) return;
+  if (!state.reconnectDeadline) state.reconnectDeadline = Date.now() + RECONNECT_GRACE_MS;
+  if (Date.now() >= state.reconnectDeadline) {
+    sessionStorage.removeItem(RESUME_TOKEN_KEY);
+    resetConnectionState();
+    return;
+  }
+  state.reconnectTimer = setTimeout(() => {
+    state.reconnectTimer = null;
+    connect();
+  }, 500);
+}
+
+export function connect(onFreshOpen = null) {
+  if (onFreshOpen) freshJoinHandler = onFreshOpen;
+  state.intentionalClose = false;
+  const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
+  state.ws = socket;
+
+  socket.onopen = () => {
+    const resumeToken = sessionStorage.getItem(RESUME_TOKEN_KEY);
+    if (resumeToken) {
+      socket.send(JSON.stringify({ type: "resume", resumeToken }));
+    } else if (freshJoinHandler) {
+      freshJoinHandler(socket);
+    }
+  };
+
+  socket.onmessage = (msg) => {
     const data = JSON.parse(msg.data);
 
     if (data.type === "notJoined") {
@@ -37,7 +81,18 @@ export function connect() {
       return;
     }
 
+    if (data.type === "resume_failed") {
+      sessionStorage.removeItem(RESUME_TOKEN_KEY);
+      state.reconnectDeadline = 0;
+      state.intentionalClose = true;
+      socket.close();
+      resetConnectionState();
+      return;
+    }
+
     if (data.type === "joined") {
+      if (data.resumeToken) sessionStorage.setItem(RESUME_TOKEN_KEY, data.resumeToken);
+      state.reconnectDeadline = 0;
       state.playerId = data.playerId;
       state.roomId = data.roomId;
       state.roomOwnerId = data.ownerId ?? null;
@@ -50,7 +105,8 @@ export function connect() {
       document.getElementById("roomCode").textContent =
         data.roomType === "private" ? `Code: ${data.roomCode}` : "";
       updateLobbyPlayers(data.players, data.ownerId, data.roomType);
-      showScreen("lobbyScreen");
+      showScreen(data.roomState === "playing" ? "gameScreen" : "lobbyScreen");
+      if (data.roomState === "playing") startBackgroundMusic();
       return;
     }
 
@@ -122,18 +178,13 @@ export function connect() {
     }
   };
 
-  state.ws.onclose = () => {
-    showScreen("menuScreen");
-    state.playerId = null;
-    state.roomId = null;
-    state.walls = [];
-    state.gameState = { players: {}, zombies: [], bullets: [] };
-    state.gameStartedAt = null;
-    document.getElementById("roomCode").textContent = "";
-    clearInterval(state.pingInterval);
-    state.pingInterval = null;
-    state.currentPing = null;
-    updatePingDisplay();
+  socket.onclose = () => {
+    if (state.ws !== socket || state.intentionalClose) return;
+    if (sessionStorage.getItem(RESUME_TOKEN_KEY)) {
+      scheduleReconnect();
+    } else {
+      resetConnectionState();
+    }
   };
 }
 
@@ -141,3 +192,5 @@ export function sendPing() {
   if (!state.ws || state.ws.readyState !== 1) return;
   state.ws.send(JSON.stringify({ type: "ping", sentAt: Date.now() }));
 }
+
+if (sessionStorage.getItem(RESUME_TOKEN_KEY)) connect();

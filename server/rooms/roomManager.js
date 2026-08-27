@@ -73,7 +73,7 @@ export function findRoom(code) {
     if (
       room.state === "lobby" &&
       room.code === code &&
-      Object.keys(room.players).length < MAX_PLAYERS_PER_ROOM
+      getRoomPlayerCount(room, false) < MAX_PLAYERS_PER_ROOM
     ) {
       return room;
     }
@@ -81,6 +81,7 @@ export function findRoom(code) {
   return null;
 }
 
-export function getRoomPlayerCount(room) {
-  return Object.keys(room.players).length;
+export function getRoomPlayerCount(room, includeDisconnected = true) {
+  if (includeDisconnected) return Object.keys(room.players).length;
+  return Object.values(room.players).filter((player) => player.connected !== false).length;
 }

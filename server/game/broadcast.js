@@ -41,6 +41,7 @@ export function broadcastLobbyUpdate(room) {
       id: p.id,
       name: p.name,
       ready: !!p.ready,
+      connected: p.connected !== false,
     })),
   });
 }

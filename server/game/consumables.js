@@ -111,6 +111,7 @@ function finishSpas(room, player) {
 
 export function updateConsumables(room, dt) {
   Object.values(room.players).forEach((player) => {
+    if (player.connected === false) return;
     if (player.adrenalineBar === undefined) player.adrenalineBar = 0;
 
     // Pasivni efekat adrenalina - nezavisan od aktivnog channeling-a, radi dok god bar > 0

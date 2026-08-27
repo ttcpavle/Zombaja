@@ -172,7 +172,9 @@ function applyStatusEffects(room, z, dt) {
 }
 
 export function updateZombies(room, dt) {
-  const alivePlayers = Object.values(room.players).filter((p) => p.alive);
+  const alivePlayers = Object.values(room.players).filter(
+    (p) => p.alive && p.connected !== false,
+  );
   if (alivePlayers.length === 0) return;
 
   room.zombies.forEach((z) => {
