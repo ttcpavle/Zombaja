@@ -34,6 +34,7 @@ function resetConnectionState() {
   state.playerId = null;
   state.roomId = null;
   state.roomOwnerId = null;
+  state.myReady = false;
   state.walls = [];
   state.gameState = { players: {}, zombies: [], bullets: [] };
   state.gameStartedAt = null;

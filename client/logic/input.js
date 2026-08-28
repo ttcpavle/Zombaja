@@ -2,6 +2,7 @@ import { CANVAS_W, CANVAS_H, GAME_W, GAME_H } from "../constants.js";
 import { state, resumeAudioContext } from "../connection/gameState.js";
 import { camX, camY } from "../UI/draw.js";
 import { isInShopZone, isShopOpen, openShop, closeShop, updateShopPrompt } from "../UI/shop.js";
+import { isPauseOpen, openPause, closePause } from "../UI/pause.js";
 
 const canvas = document.getElementById("game");
 const keys = {};
@@ -131,6 +132,7 @@ window.addEventListener("keydown", (e) => {
   if (e.code !== "Space") return;
   e.preventDefault();
   if (e.repeat) return;
+  if (isShopOpen() || isPauseOpen()) return;
   resumeAudioContext();
   spaceDown = true;
   updateFiringState();
@@ -148,6 +150,7 @@ canvas.addEventListener(
   "wheel",
   (e) => {
     e.preventDefault();
+    if (isShopOpen() || isPauseOpen()) return;
 
     if (e.deltaY < 0) {
       scroolWeapon("up");
@@ -158,9 +161,18 @@ canvas.addEventListener(
   { passive: false },
 );
 
-// 1-4 za oruzje, E/R/T za consumables (medkit/adrenalin/spas), E i za shop, esc za shop
+// 1-4 za oruzje, E/R/T za consumables (medkit/adrenalin/spas), E i za shop, esc za shop/pauzu
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+
+  if (e.code === "Escape") {
+    if (isShopOpen()) { closeShop(); return; }
+    if (isPauseOpen()) { closePause(); return; }
+    if (document.getElementById("gameScreen").classList.contains("active")) openPause();
+    return;
+  }
+
+  if (isPauseOpen()) return;
 
   if (e.code === "KeyE") {
     if (isShopOpen()) return;
@@ -178,10 +190,6 @@ window.addEventListener("keydown", (e) => {
     useConsumable("spas");
     return;
   }
-  if (e.code === "Escape") {
-    if (isShopOpen()) closeShop();
-    return;
-  }
 
   switch (e.key) {
     case "1": setWeapon(1); break;
@@ -193,7 +201,7 @@ window.addEventListener("keydown", (e) => {
 
 function movePlayer() {
   updateShopPrompt();
-  if (isShopOpen()) return;
+  if (isShopOpen() || isPauseOpen()) return;
   const me = state.gameState.players[state.playerId];
   if (!me || !me.alive || !state.ws || state.ws.readyState !== 1) return;
 

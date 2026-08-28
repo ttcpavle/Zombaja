@@ -21,6 +21,7 @@ export function updateLobbyPlayers(players, ownerId, roomType = 'private') {
         if (state.playerColorMap[p.id] === undefined) {
             state.playerColorMap[p.id] = state.colorCounter++ % PLAYER_COLORS.length;
         }
+        if (p.id == state.playerId) state.myReady = !!p.ready;
     });
 
     const MAX = 4;
@@ -38,7 +39,7 @@ export function updateLobbyPlayers(players, ownerId, roomType = 'private') {
                 </div>
                 <div class="player-name-lobby">${escHtml(p.name)}</div>
                 ${isMe ? '<div class="you-tag">YOU</div>' : ''}
-                ${roomType === 'private' && isMe ? `<button class="btn-tertiary" onclick="toggleReady()">${p.ready ? 'Ready' : 'Not Ready'}</button>` : ''}
+                ${roomType === 'private' && isMe ? `<button class="ready-toggle-btn${p.ready ? ' is-ready' : ''}" onclick="toggleReady()">${p.ready ? 'Ready' : 'Not Ready'}</button>` : ''}
                 ${isOwner ? '<div class="owner-tag">Host</div>' : ''}
             `;
         } else {
@@ -62,11 +63,7 @@ export function updateLobbyPlayers(players, ownerId, roomType = 'private') {
 
 function toggleReady() {
     if (!state.ws || state.ws.readyState !== 1) return;
-    const mySlot = Array.from(document.querySelectorAll('#playerList .player-slot')).find(slot => slot.querySelector('.you-tag'));
-    if (!mySlot) return;
-    const readyDiv = mySlot.querySelector('.player-ready');
-    const currentReady = readyDiv ? readyDiv.classList.contains('ready') : false;
-    state.ws.send(JSON.stringify({ type: 'set_ready', ready: !currentReady }));
+    state.ws.send(JSON.stringify({ type: 'set_ready', ready: !state.myReady }));
 }
 
 function startGame() {

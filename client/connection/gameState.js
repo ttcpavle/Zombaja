@@ -15,6 +15,7 @@ export const state = {
   roomId: null,
   roomOwnerId: null,
   playerName: "",
+  myReady: false,
 
   walls: [],
   shopZone: null,
