@@ -145,4 +145,5 @@ vite.config.ts.timestamp-*
 *.doc
 *.docx
 !Zombaja_Tehnicka_Specifikacija.docx
+!Zombaja_user_stories.docx
 CLAUDE.md
