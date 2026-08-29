@@ -9,10 +9,14 @@ import {
 
 export const state = {
   ws: null,
+  reconnectTimer: null,
+  reconnectDeadline: 0,
+  intentionalClose: false,
   playerId: null,
   roomId: null,
   roomOwnerId: null,
   playerName: "",
+  myReady: false,
 
   walls: [],
   shopZone: null,

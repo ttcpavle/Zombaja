@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {
   createRoom,
   findAvailableRoom,
@@ -28,6 +29,18 @@ import {
 } from "../game/consumables.js";
 
 let playerIdCounter = 1;
+const RECONNECT_GRACE_MS = 20_000;
+const resumeSessions = new Map();
+
+function hashResumeToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function createResumeSession(playerId) {
+  const token = crypto.randomBytes(32).toString("hex");
+  resumeSessions.set(hashResumeToken(token), { playerId, timer: null, expiresAt: null });
+  return token;
+}
 
 function createPlayerState(id, name, spawn, ready) {
   return {
@@ -53,6 +66,8 @@ function createPlayerState(id, name, spawn, ready) {
     consumables: createConsumableState(),
     adrenalineBar: 0,
     channeling: null,
+    connected: true,
+    disconnectedAt: null,
   };
 }
 
@@ -65,27 +80,54 @@ function ensureRoomOwner(room, fallbackId) {
   }
 }
 
-function sendJoinedConfirmation(ws, room, playerId) {
-  ws.send(
-    JSON.stringify({
-      type: "joined",
-      playerId,
-      roomId: room.id,
-      roomType: room.type,
-      roomCode: room.code,
-      ownerId: room.ownerId,
-      walls,
-      shopZone: SHOP_ZONE,
-      weaponConfig: WEAPON_CONFIG,
-      consumableConfig: CONSUMABLE_CONFIG,
-      roomState: room.state,
-      players: Object.values(room.players).map((p) => ({
-        id: p.id,
-        name: p.name,
-        ready: !!p.ready,
-      })),
-    }),
-  );
+function sendJoined(ws, room, playerId, resumeToken) {
+  ws.send(JSON.stringify({
+    type: "joined",
+    playerId,
+    roomId: room.id,
+    roomType: room.type,
+    roomCode: room.code,
+    ownerId: room.ownerId,
+    resumeToken,
+    walls,
+    shopZone: SHOP_ZONE,
+    weaponConfig: WEAPON_CONFIG,
+    consumableConfig: CONSUMABLE_CONFIG,
+    roomState: room.state,
+    players: Object.values(room.players).map((p) => ({
+      id: p.id,
+      name: p.name,
+      ready: !!p.ready,
+      connected: p.connected !== false,
+    })),
+  }));
+}
+
+// Jedino mesto koje TRAJNO brise igraca (posle isteka grace perioda ili
+// eksplicitnog "leave"). Obican ws close samo markira connected:false.
+function removePlayer(playerId) {
+  const roomId = playerRoom[playerId];
+  const room = rooms[roomId];
+  if (room) {
+    const wasOwner = room.ownerId === playerId;
+    delete room.players[playerId];
+    if (Object.keys(room.players).length === 0) {
+      stopGameLoop(room);
+      delete rooms[roomId];
+      console.log(`Room ${roomId} removed (empty)`);
+    } else {
+      if (wasOwner) ensureRoomOwner(room, null);
+      if (room.state === "lobby") broadcastLobbyUpdate(room);
+    }
+  }
+  delete playerRoom[playerId];
+  delete playerWs[playerId];
+  for (const [tokenHash, session] of resumeSessions) {
+    if (session.playerId === playerId) {
+      if (session.timer) clearTimeout(session.timer);
+      resumeSessions.delete(tokenHash);
+    }
+  }
 }
 
 export function setupWebsocket(wss) {
@@ -95,14 +137,46 @@ export function setupWebsocket(wss) {
     ws.on("message", (msg) => {
       const data = JSON.parse(msg);
 
+      if (data.type === "resume") {
+        const session = typeof data.resumeToken === "string"
+          ? resumeSessions.get(hashResumeToken(data.resumeToken))
+          : null;
+        const room = session ? rooms[playerRoom[session.playerId]] : null;
+        const player = session && room ? room.players[session.playerId] : null;
+        if (!session || !room || !player || (session.expiresAt && session.expiresAt < Date.now())) {
+          ws.send(JSON.stringify({ type: "resume_failed" }));
+          return;
+        }
+
+        if (session.timer) clearTimeout(session.timer);
+        session.timer = null;
+        session.expiresAt = null;
+        playerId = session.playerId;
+        const previousWs = playerWs[playerId];
+        if (previousWs && previousWs !== ws) previousWs.close();
+        player.connected = true;
+        player.disconnectedAt = null;
+        playerWs[playerId] = ws;
+        sendJoined(ws, room, playerId, data.resumeToken);
+        broadcastLobbyUpdate(room);
+        return;
+      }
+
       // ---- JOIN: assign player to a room ----
       if (
         data.type === "create_lobby" ||
         data.type === "join_public" ||
         data.type === "join"
       ) {
+        // Ista konekcija moze poslati novi join dok je "logicki" jos u staroj
+        // sobi (npr. Nova igra sa game-over ekrana) - ocisti staro clanstvo
+        // PRE ulaska u novu sobu, inace ostaje "duh" igrac.
+        if (playerId) {
+          removePlayer(playerId);
+          playerId = null;
+        }
+
         playerId = playerIdCounter++;
-        playerWs[playerId] = ws;
 
         let room;
         if (data.type === "create_lobby") {
@@ -128,9 +202,11 @@ export function setupWebsocket(wss) {
           data.type === "create_lobby",
         );
         playerRoom[playerId] = room.id;
+        playerWs[playerId] = ws;
         ensureRoomOwner(room, room.ownerId ?? playerId);
 
-        sendJoinedConfirmation(ws, room, playerId);
+        const resumeToken = createResumeSession(playerId);
+        sendJoined(ws, room, playerId, resumeToken);
         broadcastLobbyUpdate(room);
 
         if (
@@ -149,12 +225,25 @@ export function setupWebsocket(wss) {
 
       // ---- REJOIN: "igraj ponovo sa istim igracima" posle game over-a ----
       if (data.type === "rejoin_room") {
+        if (playerId) {
+          removePlayer(playerId);
+          playerId = null;
+        }
+
         const targetRoom = rooms[data.roomId];
         if (!targetRoom || targetRoom.state === "playing") {
           ws.send(JSON.stringify({ type: "notJoined" }));
           return;
         }
         clearTimeout(targetRoom.emptyGraceTimer);
+
+        const staleDuplicate = Object.values(targetRoom.players).find(
+          (existing) => existing.connected === false && existing.name === (data.name || `Player`),
+        );
+        if (staleDuplicate) {
+          removePlayer(staleDuplicate.id);
+        }
+
         playerId = playerIdCounter++;
         playerWs[playerId] = ws;
 
@@ -168,27 +257,30 @@ export function setupWebsocket(wss) {
         const spawnIdx = getRoomPlayerCount(targetRoom) % SPAWN_POINTS.length;
         const spawn = SPAWN_POINTS[spawnIdx];
 
-        // Prvi koji se vrati (onaj ko sobu vraca iz "gameover" u "lobby") je
-        // analogan create_lobby vlasniku - automatski ready, isto kao osnivac sobe.
-        // Svi sledeci koji se prikljucuju istoj sobi i dalje moraju rucno da se ready-uju.
-        targetRoom.players[playerId] = createPlayerState(playerId, data.name, spawn, isFirstBack);        
+        targetRoom.players[playerId] = createPlayerState(playerId, data.name, spawn, isFirstBack);
         playerRoom[playerId] = targetRoom.id;
         ensureRoomOwner(targetRoom, null);
 
-        sendJoinedConfirmation(ws, targetRoom, playerId);
+        const resumeToken = createResumeSession(playerId);
+        sendJoined(ws, targetRoom, playerId, resumeToken);
         broadcastLobbyUpdate(targetRoom);
         console.log(`Player ${playerId} (${data.name}) rejoined room ${targetRoom.id}`);
         return;
       }
 
-      // All subsequent messages require playerId to be set
       if (!playerId) return;
+
+      if (data.type === "leave") {
+        ws.send(JSON.stringify({ type: "left" }));
+        removePlayer(playerId);
+        playerId = null;
+        return;
+      }
 
       const room = rooms[playerRoom[playerId]];
       if (!room) return;
       const p = room.players[playerId];
 
-      // ---- SET READY ----
       if (data.type === "set_ready") {
         if (!room.players[playerId]) return;
         room.players[playerId].ready = !!data.ready;
@@ -196,27 +288,21 @@ export function setupWebsocket(wss) {
         return;
       }
 
-      // ---- PING/PONG ----
       if (data.type === "ping") {
         ws.send(JSON.stringify({ type: "pong", sentAt: data.sentAt }));
         return;
       }
 
-      // ---- START GAME ----
       if (data.type === "start_game") {
         if (room.state !== "lobby") return;
         if (room.ownerId !== playerId) {
-          ws.send(
-            JSON.stringify({ type: "start_failed", reason: "not_owner" }),
-          );
+          ws.send(JSON.stringify({ type: "start_failed", reason: "not_owner" }));
           return;
         }
-        const players = Object.values(room.players);
-        const allReady = players.length > 0 && players.every((p) => p.ready);
+        const players = Object.values(room.players).filter((pl) => pl.connected !== false);
+        const allReady = players.length > 0 && players.every((pl) => pl.ready);
         if (!allReady) {
-          ws.send(
-            JSON.stringify({ type: "start_failed", reason: "not_all_ready" }),
-          );
+          ws.send(JSON.stringify({ type: "start_failed", reason: "not_all_ready" }));
           return;
         }
         room.state = "playing";
@@ -227,7 +313,6 @@ export function setupWebsocket(wss) {
         return;
       }
 
-      // ---- IN-GAME ACTIONS ----
       if (room.state !== "playing") return;
       if (!p || !p.alive) return;
 
@@ -244,9 +329,7 @@ export function setupWebsocket(wss) {
       if (data.type === "shoot_start" || data.type === "shoot_update") {
         if (typeof data.dx === "number" && typeof data.dy === "number") {
           const len = Math.hypot(data.dx, data.dy);
-          if (len > 0) {
-            p.shootDir = { dx: data.dx / len, dy: data.dy / len };
-          }
+          if (len > 0) p.shootDir = { dx: data.dx / len, dy: data.dy / len };
         }
         if (data.type === "shoot_start") {
           p.shooting = true;
@@ -255,10 +338,7 @@ export function setupWebsocket(wss) {
         return;
       }
 
-      if (data.type === "shoot_stop") {
-        p.shooting = false;
-        return;
-      }
+      if (data.type === "shoot_stop") { p.shooting = false; return; }
 
       if (data.type === "weapon_change") {
         if (Number.isInteger(data.weapon) && data.weapon >= 0 && data.weapon <= 3) {
@@ -337,38 +417,30 @@ export function setupWebsocket(wss) {
 
     ws.on("close", () => {
       if (!playerId) return;
+      if (playerWs[playerId] !== ws) return; // vec zamenjeno novijom konekcijom (resume)
+
       const roomId = playerRoom[playerId];
       const room = rooms[roomId];
-      if (room) {
-        const wasOwner = room.ownerId === playerId;
-        delete room.players[playerId];
-        console.log(`Player ${playerId} left room ${roomId}`);
+      const player = room?.players[playerId];
+      if (!room || !player) return;
 
-        if (Object.keys(room.players).length === 0) {
-          stopGameLoop(room);
-          if (room.state === "gameover") {
-            // Igraci sa game-over ekrana upravo rekonektuju (stara konekcija se gasi
-            // PRE nego sto nova posalje rejoin_room) - ostavi sobi kratak prozor.
-            clearTimeout(room.emptyGraceTimer);
-            room.emptyGraceTimer = setTimeout(() => {
-              if (rooms[roomId] && Object.keys(rooms[roomId].players).length === 0) {
-                delete rooms[roomId];
-                console.log(`Room ${roomId} removed (empty, gameover grace expired)`);
-              }
-            }, 15000);
-          } else {
-            delete rooms[roomId];
-            console.log(`Room ${roomId} removed (empty)`);
-          }
-        } else {
-          if (wasOwner) ensureRoomOwner(room, null);
-          if (room.state === "lobby") {
-            broadcastLobbyUpdate(room);
-          }
-        }
-      }
-      delete playerRoom[playerId];
       delete playerWs[playerId];
+      player.connected = false;
+      player.disconnectedAt = Date.now();
+      player.shooting = false;
+      player.channeling = null;
+
+      const tokenSession = [...resumeSessions.values()].find((s) => s.playerId === playerId);
+      if (tokenSession) {
+        tokenSession.expiresAt = Date.now() + RECONNECT_GRACE_MS;
+        tokenSession.timer = setTimeout(() => removePlayer(playerId), RECONNECT_GRACE_MS);
+      } else {
+        removePlayer(playerId);
+        return;
+      }
+
+      broadcastLobbyUpdate(room);
+      console.log(`Player ${playerId} disconnected; grace period started`);
     });
   });
 }

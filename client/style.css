@@ -113,6 +113,33 @@ body::after {
   padding: 40px 48px;
   width: 380px;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.menu-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.menu-divider::before,
+.menu-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }
 
 .menu-panel::before {
@@ -130,7 +157,6 @@ body::after {
   letter-spacing: 3px;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 8px;
 }
 
 .field-input {
@@ -144,7 +170,6 @@ body::after {
   padding: 12px 14px;
   outline: none;
   transition: border-color 0.2s;
-  margin-bottom: 28px;
 }
 
 .field-input:focus {
@@ -313,6 +338,45 @@ body::after {
   padding: 2px 7px;
 }
 
+.owner-tag {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #ffde57;
+  background: rgba(255, 222, 87, 0.1);
+  border: 1px solid rgba(255, 222, 87, 0.3);
+  padding: 2px 7px;
+}
+
+.ready-toggle-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ready-toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ready-toggle-btn.is-ready {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0a0a;
+}
+
+.ready-toggle-btn.is-ready:hover {
+  background: #d9ff40;
+}
+
 .lobby-footer {
   padding: 24px 32px;
   border-top: 1px solid var(--border);
@@ -358,12 +422,16 @@ body::after {
 #gameWrapper {
   position: relative;
   transform-origin: center center;
+  max-width: 100vw;
+  max-height: 100vh;
 }
 
 canvas {
   display: block;
   background: #1a1d24;
   border: 1px solid var(--border);
+  max-width: 100vw;
+  max-height: 100vh;
 }
 
 #hud {
@@ -475,29 +543,23 @@ canvas {
 #controls {
   position: absolute;
   bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 12px;
+  z-index: 20;
+  background: rgba(10, 10, 10, 0.85);
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   font-size: 10px;
   letter-spacing: 2px;
   color: var(--muted);
   pointer-events: none;
   white-space: nowrap;
-  pointer-events: none;
 }
 
-.audio-settings {
-  position: absolute;
-  bottom: 12px; /* Prebačeno sa top na bottom */
-  left: 12px;
-  z-index: 20;
-  background: rgba(17, 19, 24, 0.92);
-  border: 1px solid var(--border);
-  padding: 6px 8px; /* Smanjen padding za kompaktniji izgled */
-  display: flex;
-  flex-direction: column;
-  gap: 4px; /* Smanjen razmak između elemenata */
-  min-width: 130px; /* Smanjena minimalna širina */
-  font-size: 11px; /* Smanjen font da manje skreće pažnju */
+#controls.hidden {
+  display: none;
 }
 
 .audio-setting {
@@ -514,6 +576,60 @@ canvas {
 .audio-setting input {
   width: 92px;
   accent-color: var(--accent);
+}
+
+#pauseOverlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+#pauseOverlay.visible { display: flex; }
+#pausePanel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  width: 320px;
+  position: relative;
+  padding: 28px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+#pausePanel::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.pause-title {
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-align: center;
+}
+.pause-section-title {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.pause-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: -8px;
+}
+.pause-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 #shopPrompt {

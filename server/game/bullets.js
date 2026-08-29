@@ -54,6 +54,7 @@ export function checkCollisions(room) {
   room.bullets.forEach((b) => {
     if (b.owner === null) {
       Object.values(room.players).forEach((p) => {
+        if (p.connected === false) return;
         const dist = Math.hypot(b.x - (p.x + 10), b.y - (p.y + 10));
         if (dist < 20) {
           p.health -= b.damage;

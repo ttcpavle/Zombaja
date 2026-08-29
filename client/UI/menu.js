@@ -15,16 +15,16 @@ export function createPrivateLobby() {
     document.getElementById('createBtn').disabled = true;
     document.getElementById('createBtn').textContent = 'Connecting...';
 
-    connect();
-    state.ws.onopen = () => {
-        state.ws.send(JSON.stringify({ type: 'create_lobby', name: state.playerName }));
+    sessionStorage.removeItem('zombajaResumeToken');
+    connect((ws) => {
+        ws.send(JSON.stringify({ type: 'create_lobby', name: state.playerName }));
         document.getElementById('createBtn').disabled = false;
         document.getElementById('createBtn').textContent = 'Create private lobby';
         if (!state.pingInterval) {
             sendPing();
             state.pingInterval = setInterval(sendPing, 1000);
         }
-    };
+    });
 }
 
 export function joinRandomGame() {
@@ -39,16 +39,16 @@ export function joinRandomGame() {
     document.getElementById('randomBtn').disabled = true;
     document.getElementById('randomBtn').textContent = 'Connecting...';
 
-    connect();
-    state.ws.onopen = () => {
-        state.ws.send(JSON.stringify({ type: 'join_public', name: state.playerName }));
+    sessionStorage.removeItem('zombajaResumeToken');
+    connect((ws) => {
+        ws.send(JSON.stringify({ type: 'join_public', name: state.playerName }));
         document.getElementById('randomBtn').disabled = false;
         document.getElementById('randomBtn').textContent = 'Join random public game';
         if (!state.pingInterval) {
             sendPing();
             state.pingInterval = setInterval(sendPing, 1000);
         }
-    };
+    });
 }
 
 export function joinGame() {
@@ -70,16 +70,16 @@ export function joinGame() {
     document.getElementById('codeBtn').disabled = true;
     document.getElementById('codeBtn').textContent = 'Joining...';
 
-    connect();
-    state.ws.onopen = () => {
-        state.ws.send(JSON.stringify({ type: 'join', name: state.playerName, code }));
+    sessionStorage.removeItem('zombajaResumeToken');
+    connect((ws) => {
+        ws.send(JSON.stringify({ type: 'join', name: state.playerName, code }));
         document.getElementById('codeBtn').disabled = false;
         document.getElementById('codeBtn').textContent = 'Join existing lobby';
         if (!state.pingInterval) {
             sendPing();
             state.pingInterval = setInterval(sendPing, 1000);
         }
-    };
+    });
 }
 
 // Zove se sa game-over ekrana - potpuno nova javna soba, nasumicni saigraci.
@@ -107,15 +107,49 @@ export function playAgainSamePlayers() {
     unmountRoulette();
     const roomId = state.roomId;
     const name = state.playerName;
-    if (state.ws) state.ws.close();
-    connect();
-    state.ws.onopen = () => {
-        state.ws.send(JSON.stringify({ type: 'rejoin_room', roomId, name }));
-        if (!state.pingInterval) {
-            sendPing();
-            state.pingInterval = setInterval(sendPing, 1000);
-        }
-    };
+    const oldWs = state.ws;
+
+    function proceedWithRejoin() {
+        connect();
+        state.ws.onopen = () => {
+            state.ws.send(JSON.stringify({ type: 'rejoin_room', roomId, name }));
+            if (!state.pingInterval) {
+                sendPing();
+                state.pingInterval = setInterval(sendPing, 1000);
+            }
+        };
+    }
+
+    if (!oldWs || oldWs.readyState !== 1) {
+        if (oldWs) oldWs.close();
+        proceedWithRejoin();
+        return;
+    }
+
+    let settled = false;
+
+    const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        oldWs.removeEventListener('message', onLeftAck);
+        oldWs.close();
+        proceedWithRejoin();
+    }, 1000);
+
+    function onLeftAck(event) {
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (data.type !== 'left' || settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        oldWs.removeEventListener('message', onLeftAck);
+        oldWs.close();
+        proceedWithRejoin();
+    }
+
+    oldWs.addEventListener('message', onLeftAck);
+    sessionStorage.removeItem('zombajaResumeToken');
+    oldWs.send(JSON.stringify({ type: 'leave' }));
 }
 
 export function backToMainMenu() {

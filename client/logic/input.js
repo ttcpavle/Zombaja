@@ -3,6 +3,8 @@ import { state, resumeAudioContext } from "../connection/gameState.js";
 import { camX, camY } from "../UI/draw.js";
 import { isInShopZone, isShopOpen, openShop, closeShop, updateShopPrompt } from "../UI/shop.js";
 import { isRouletteMounted } from "../UI/roulette.js";
+import { isPauseOpen, openPause, closePause } from "../UI/pause.js";
+
 const canvas = document.getElementById("game");
 const keys = {};
 const mouseState = {
@@ -131,6 +133,7 @@ window.addEventListener("keydown", (e) => {
   if (e.code !== "Space") return;
   e.preventDefault();
   if (e.repeat) return;
+  if (isShopOpen() || isPauseOpen()) return;
   resumeAudioContext();
   spaceDown = true;
   updateFiringState();
@@ -148,6 +151,7 @@ canvas.addEventListener(
   "wheel",
   (e) => {
     e.preventDefault();
+    if (isShopOpen() || isPauseOpen()) return;
 
     if (e.deltaY < 0) {
       scroolWeapon("up");
@@ -160,8 +164,23 @@ canvas.addEventListener(
 
 // E = SAMO shop (bez obzira na zonu van nje ne radi nista).
 // Q/R/T = medkit/adrenalin/spas, rade svuda dok igrac zivi.
+
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+
+  if (e.code === "Escape") {
+    if (isShopOpen()) { closeShop(); return; }
+    if (isPauseOpen()) { closePause(); return; }
+    if (document.getElementById("gameScreen").classList.contains("active")) openPause();
+    return;
+  }
+
+  if (e.code === "KeyH") {
+      toggleControlsHint();
+      return;
+    }
+
+  if (isPauseOpen()) return;
 
   if (e.code === "KeyE") {
     if (isShopOpen()) return;
@@ -189,10 +208,6 @@ window.addEventListener("keydown", (e) => {
     state.ws.send(JSON.stringify({ type: "toggle_gambling_vote" }));
     return;
   }
-  if (e.code === "Escape") {
-    if (isShopOpen()) closeShop();
-    return;
-  }
 
   switch (e.key) {
     case "1": setWeapon(1); break;
@@ -202,10 +217,15 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+function toggleControlsHint() {
+  const el = document.getElementById("controls");
+  if (!el) return;
+  el.classList.toggle("hidden");
+}
+
 function movePlayer() {
   updateShopPrompt();
-  if (isShopOpen()) return;
-  if (isRouletteMounted()) return;
+  if (isShopOpen() || isPauseOpen() || isRouletteMounted()) return;
   const me = state.gameState.players[state.playerId];
   if (!me || !me.alive || !state.ws || state.ws.readyState !== 1) return;
 
