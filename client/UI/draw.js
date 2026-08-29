@@ -12,9 +12,33 @@ function worldToScreen(wx, wy) {
 
 function updateCamera() {
   const me = state.gameState.players[state.playerId];
-  if (!me) return;
-  camX = me.x + 10 - CANVAS_W / 2;
-  camY = me.y + 10 - CANVAS_H / 2;
+  let target = me;
+
+  if (!me || !me.alive) {
+    const alivePlayers = Object.values(state.gameState.players).filter((p) => p.alive);
+    if (state.spectateTargetId && alivePlayers.some((p) => p.id == state.spectateTargetId)) {
+      target = state.gameState.players[state.spectateTargetId];
+    } else if (alivePlayers.length > 0) {
+      target = alivePlayers[0];
+      state.spectateTargetId = target.id;
+    } else {
+      target = me; // niko ziv, ostani na poslednjoj poziciji
+    }
+  }
+
+  const banner = document.getElementById("spectateBanner");
+  if (banner) {
+    if (me && !me.alive && target && target !== me) {
+      banner.textContent = `Posmatras: ${target.name}`;
+      banner.classList.add("visible");
+    } else {
+      banner.classList.remove("visible");
+    }
+  }
+
+  if (!target) return;
+  camX = target.x + 10 - CANVAS_W / 2;
+  camY = target.y + 10 - CANVAS_H / 2;
   camX = Math.max(0, Math.min(GAME_W - CANVAS_W, camX));
   camY = Math.max(0, Math.min(GAME_H - CANVAS_H, camY));
 }
@@ -60,6 +84,49 @@ function drawChannelingRing(p) {
   ctx.fillText(Math.ceil(remaining / 1000).toString(), cx, cy + 1);
   ctx.textBaseline = "alphabetic";
   ctx.restore();
+}
+
+function drawFireZones() {
+  const now = Date.now();
+  (state.gameState.fireZones || []).forEach((zone) => {
+    const flicker = 0.55 + 0.35 * Math.sin(now / 90 + zone.x * 0.01);
+    const grad = ctx.createRadialGradient(zone.x, zone.y, 0, zone.x, zone.y, zone.radius);
+    grad.addColorStop(0, `rgba(255,140,20,${0.55 * flicker})`);
+    grad.addColorStop(0.6, `rgba(255,80,10,${0.35 * flicker})`);
+    grad.addColorStop(1, "rgba(255,60,0,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawZombieStatusIcons(z) {
+  if (!z.effects || z.effects.length === 0) return;
+  const hasBleed = z.effects.some((e) => e.type === "bleed");
+  const hasBurn = z.effects.some((e) => e.type === "burn");
+  if (!hasBleed && !hasBurn) return;
+
+  let iconX = z.x + z.size + 2;
+  const iconY = z.y - 2;
+
+  if (hasBurn) {
+    ctx.fillStyle = "#ff8c1a";
+    ctx.beginPath();
+    ctx.moveTo(iconX + 3, iconY);
+    ctx.quadraticCurveTo(iconX + 6, iconY + 5, iconX + 3, iconY + 9);
+    ctx.quadraticCurveTo(iconX, iconY + 5, iconX + 3, iconY);
+    ctx.fill();
+    iconX += 8;
+  }
+  if (hasBleed) {
+    ctx.fillStyle = "#e93351";
+    ctx.beginPath();
+    ctx.moveTo(iconX + 3, iconY);
+    ctx.quadraticCurveTo(iconX + 6, iconY + 6, iconX + 3, iconY + 9);
+    ctx.quadraticCurveTo(iconX, iconY + 6, iconX + 3, iconY);
+    ctx.fill();
+  }
 }
 
 function draw() {
@@ -114,12 +181,16 @@ function draw() {
     ctx.fillText("SHOP", z.x + z.w / 2, z.y - 8);
     ctx.textAlign = "left";
   }
+
+  drawFireZones();
+
   state.gameState.zombies.forEach((z) => {
     ctx.fillStyle = z.color;
     ctx.fillRect(z.x, z.y, z.size, z.size);
     ctx.fillStyle = z.secondaryColor;
     ctx.fillRect(z.x + 4, z.y + 5, 4, 4);
     ctx.fillRect(z.x + 12, z.y + 5, 4, 4);
+    drawZombieStatusIcons(z);
   });
 
   state.gameState.bullets.forEach((b) => {

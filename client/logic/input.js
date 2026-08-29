@@ -2,6 +2,7 @@ import { CANVAS_W, CANVAS_H, GAME_W, GAME_H } from "../constants.js";
 import { state, resumeAudioContext } from "../connection/gameState.js";
 import { camX, camY } from "../UI/draw.js";
 import { isInShopZone, isShopOpen, openShop, closeShop, updateShopPrompt } from "../UI/shop.js";
+import { isRouletteMounted } from "../UI/roulette.js";
 import { isPauseOpen, openPause, closePause } from "../UI/pause.js";
 
 const canvas = document.getElementById("game");
@@ -161,7 +162,9 @@ canvas.addEventListener(
   { passive: false },
 );
 
-// 1-4 za oruzje, E/R/T za consumables (medkit/adrenalin/spas), E i za shop, esc za shop/pauzu
+// E = SAMO shop (bez obzira na zonu van nje ne radi nista).
+// Q/R/T = medkit/adrenalin/spas, rade svuda dok igrac zivi.
+
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
 
@@ -172,11 +175,20 @@ window.addEventListener("keydown", (e) => {
     return;
   }
 
+  if (e.code === "KeyH") {
+      toggleControlsHint();
+      return;
+    }
+
   if (isPauseOpen()) return;
 
   if (e.code === "KeyE") {
     if (isShopOpen()) return;
-    if (isInShopZone()) { openShop(); return; }
+    if (isInShopZone()) openShop();
+    return;
+  }
+  if (e.code === "KeyQ") {
+    if (isShopOpen()) return;
     useConsumable("medkit");
     return;
   }
@@ -190,6 +202,12 @@ window.addEventListener("keydown", (e) => {
     useConsumable("spas");
     return;
   }
+  if (e.code === "KeyG") {
+    if (isShopOpen()) return;
+    if (!state.ws || state.ws.readyState !== 1) return;
+    state.ws.send(JSON.stringify({ type: "toggle_gambling_vote" }));
+    return;
+  }
 
   switch (e.key) {
     case "1": setWeapon(1); break;
@@ -199,15 +217,21 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+function toggleControlsHint() {
+  const el = document.getElementById("controls");
+  if (!el) return;
+  el.classList.toggle("hidden");
+}
+
 function movePlayer() {
   updateShopPrompt();
-  if (isShopOpen() || isPauseOpen()) return;
+  if (isShopOpen() || isPauseOpen() || isRouletteMounted()) return;
   const me = state.gameState.players[state.playerId];
   if (!me || !me.alive || !state.ws || state.ws.readyState !== 1) return;
 
   let speed = 3;
   if (me.channeling) speed *= 0.5;
-  if (me.adrenalineBar) speed *= 1 + 0.30 * me.adrenalineBar; // 0.30 = ADRENALIN_MAX_SPEED_BONUS na serveru (consumables.js) - drzati u sinhronizaciji
+  if (me.adrenalineBar) speed *= 1 + 0.30 * me.adrenalineBar; // 0.30 = ADRENALIN_MAX_SPEED_BONUS na serveru (consumables.js) - drzati sinhronizovano
 
   let dx = 0,
     dy = 0;

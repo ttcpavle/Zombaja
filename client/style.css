@@ -421,6 +421,7 @@ body::after {
 
 #gameWrapper {
   position: relative;
+  transform-origin: center center;
   max-width: 100vw;
   max-height: 100vh;
 }
@@ -555,6 +556,10 @@ canvas {
   color: var(--muted);
   pointer-events: none;
   white-space: nowrap;
+}
+
+#controls.hidden {
+  display: none;
 }
 
 .audio-setting {
@@ -870,3 +875,48 @@ button.shop-btn.secondary:hover { border-color: var(--accent); color: var(--acce
   color: var(--muted);
   text-transform: uppercase;
 }
+
+.go-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid #1a1d24;
+}
+.go-row:last-child { border-bottom: none; }
+.go-rank {
+  width: 24px;
+  text-align: center;
+  color: var(--accent);
+  font-family: var(--display);
+  font-weight: 700;
+}
+.go-name { flex: 1; color: var(--text); }
+.go-score { color: var(--accent); font-family: var(--mono); }
+#spectateBanner {
+  display: none;
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 10, 0.85);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 6px 14px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  pointer-events: none;
+  z-index: 20;
+}
+#spectateBanner.visible { display: block; }
+
+#gamblingOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  align-items: center;
+  justify-content: center;
+}
+#gamblingOverlay.visible { display: flex; }

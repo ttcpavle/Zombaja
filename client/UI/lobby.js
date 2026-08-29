@@ -3,6 +3,7 @@ import { state } from '../connection/gameState.js';
 import {
     PLAYER_COLORS
 } from '../constants.js';
+import { unmountRoulette } from '../UI/roulette.js';
 
 function escHtml(str) {
     return String(str)
@@ -61,6 +62,25 @@ export function updateLobbyPlayers(players, ownerId, roomType = 'private') {
     }
 }
 
+export function renderGameOverResults(results, wave) {
+    const list = document.getElementById('gameOverList');
+    const waveEl = document.getElementById('goWave');
+    if (waveEl) waveEl.textContent = wave ?? '--';
+    if (!list) return;
+    list.innerHTML = '';
+    results.forEach((r, i) => {
+        const row = document.createElement('div');
+        row.className = 'go-row';
+        const isMe = r.id == state.playerId;
+        row.innerHTML = `
+            <div class="go-rank">#${i + 1}</div>
+            <div class="go-name">${escHtml(r.name)}${isMe ? ' <span class="you-tag">YOU</span>' : ''}</div>
+            <div class="go-score">${r.score}</div>
+        `;
+        list.appendChild(row);
+    });
+}
+
 function toggleReady() {
     if (!state.ws || state.ws.readyState !== 1) return;
     state.ws.send(JSON.stringify({ type: 'set_ready', ready: !state.myReady }));
@@ -73,6 +93,7 @@ function startGame() {
 }
 
 function leaveRoom() {
+    unmountRoulette();
     state.intentionalClose = true;
     sessionStorage.removeItem('zombajaResumeToken');
     if (state.ws && state.ws.readyState === 1) {

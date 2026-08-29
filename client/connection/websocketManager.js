@@ -11,9 +11,10 @@ import {
   handlePlayerDamage,
   startBackgroundMusic,
 } from "./gameState.js";
-import { updateLobbyPlayers, updatePingDisplay } from "../UI/lobby.js";
+import { updateLobbyPlayers, updatePingDisplay, renderGameOverResults } from "../UI/lobby.js";
 import { isShopOpen, renderShop } from "../UI/shop.js";
 import { renderActionBar, showToast } from "../UI/hud.js";
+import { unmountRoulette } from '../UI/roulette.js';
 
 const RESUME_TOKEN_KEY = "zombajaResumeToken";
 const RECONNECT_GRACE_MS = 20_000;
@@ -79,6 +80,7 @@ export function connect(onFreshOpen = null) {
 
     if (data.type === "notJoined") {
       document.getElementById("codeInput").value = "ne valja kod!!";
+      showScreen("menuScreen");
       return;
     }
 
@@ -131,6 +133,12 @@ export function connect(onFreshOpen = null) {
       return;
     }
 
+    if (data.type === "game_over") {
+      showScreen("gameOverScreen");
+      renderGameOverResults(data.results, data.wave);
+      return;
+    }
+
     if (data.type === "hit_feedback") {
       addHitIndicator(data);
       return;
@@ -179,8 +187,11 @@ export function connect(onFreshOpen = null) {
     }
   };
 
+
   socket.onclose = () => {
     if (state.ws !== socket || state.intentionalClose) return;
+    unmountRoulette();
+    state.wasGambling = false;
     if (sessionStorage.getItem(RESUME_TOKEN_KEY)) {
       scheduleReconnect();
     } else {

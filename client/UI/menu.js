@@ -1,5 +1,7 @@
 import { state } from '../connection/gameState.js';
 import { connect, sendPing } from '../connection/websocketManager.js';
+import { showScreen } from './screenManager.js';
+import { unmountRoulette } from '../UI/roulette.js';
 
 export function createPrivateLobby() {
     const name = document.getElementById('nameInput').value.trim();
@@ -79,11 +81,86 @@ export function joinGame() {
         }
     });
 }
-/*
-document.getElementById('nameInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') joinRandomGame();
-});*/
+
+// Zove se sa game-over ekrana - potpuno nova javna soba, nasumicni saigraci.
+// NAPOMENA: gasi staru ws konekciju i odmah otvara novu; postoji teorijska
+// trka gde stari onclose handler (koji resetuje state.playerId/roomId/...)
+// moze da se izvrsi tek POSLE sto nova konekcija vec dobije "joined" odgovor,
+// sto moze izazvati kratak vizuelni "trzaj" nazad ka meniju. Bezopasno, samo kozmeticki.
+export function quickGame() {
+    unmountRoulette();
+    const name = state.playerName;
+    if (state.ws) state.ws.close();
+    connect();
+    state.ws.onopen = () => {
+        state.ws.send(JSON.stringify({ type: 'join_public', name }));
+        if (!state.pingInterval) {
+            sendPing();
+            state.pingInterval = setInterval(sendPing, 1000);
+        }
+    };
+}
+
+// Zove se sa game-over ekrana - vraca te u ISTU sobu (po roomId) da bi
+// mogao da sacekas/igras opet sa istim ljudima koji takodje kliknu ovo.
+export function playAgainSamePlayers() {
+    unmountRoulette();
+    const roomId = state.roomId;
+    const name = state.playerName;
+    const oldWs = state.ws;
+
+    function proceedWithRejoin() {
+        connect();
+        state.ws.onopen = () => {
+            state.ws.send(JSON.stringify({ type: 'rejoin_room', roomId, name }));
+            if (!state.pingInterval) {
+                sendPing();
+                state.pingInterval = setInterval(sendPing, 1000);
+            }
+        };
+    }
+
+    if (!oldWs || oldWs.readyState !== 1) {
+        if (oldWs) oldWs.close();
+        proceedWithRejoin();
+        return;
+    }
+
+    let settled = false;
+
+    const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        oldWs.removeEventListener('message', onLeftAck);
+        oldWs.close();
+        proceedWithRejoin();
+    }, 1000);
+
+    function onLeftAck(event) {
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (data.type !== 'left' || settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        oldWs.removeEventListener('message', onLeftAck);
+        oldWs.close();
+        proceedWithRejoin();
+    }
+
+    oldWs.addEventListener('message', onLeftAck);
+    sessionStorage.removeItem('zombajaResumeToken');
+    oldWs.send(JSON.stringify({ type: 'leave' }));
+}
+
+export function backToMainMenu() {
+    unmountRoulette();
+    if (state.ws) state.ws.close();
+    showScreen('menuScreen');
+}
 
 window.createPrivateLobby = createPrivateLobby;
 window.joinRandomGame = joinRandomGame;
 window.joinGame = joinGame;
+window.quickGame = quickGame;
+window.playAgainSamePlayers = playAgainSamePlayers;
+window.backToMainMenu = backToMainMenu;

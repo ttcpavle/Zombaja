@@ -1,3 +1,4 @@
+import { mountRoulette, unmountRoulette } from "../UI/roulette.js";
 import {
   CANVAS_W,
   CANVAS_H,
@@ -21,7 +22,7 @@ export const state = {
   shopZone: null,
   weaponConfig: {},
   consumableConfig: {},
-  gameState: { players: {}, zombies: [], bullets: [] },
+  gameState: { players: {}, zombies: [], bullets: [], fireZones: [] },
   playerColorMap: {},
   colorCounter: 0,
   currentPing: null,
@@ -36,6 +37,10 @@ export const state = {
   musicVolume: 0.6,
   musicAudio: null,
   gameStartedAt: null,
+  spectateTargetId: null,
+  wasAlive: true,
+  deathOverlayTimeout: null,
+  wasGambling: false,
 };
 
 const audioAssetPaths = {
@@ -280,6 +285,7 @@ function renderLeaderboard(players) {
 export function syncGameState(data) {
   state.gameState.zombies = data.zombies;
   state.gameState.bullets = data.bullets;
+  state.gameState.fireZones = data.fireZones || [];
   if (typeof data.startedAt === "number") state.gameStartedAt = data.startedAt;
   if (typeof data.wave === "number" && data.wave !== state.currentWave) {
     state.currentWave = data.wave;
@@ -340,8 +346,36 @@ export function syncGameState(data) {
       0,
       Math.ceil(me.health),
     );
-    document
-      .getElementById("deathOverlay")
-      .classList.toggle("visible", !me.alive);
+
+    const gEl = document.getElementById('hudGamblingText');
+    if (gEl) {
+      if (data.gamblingMode) {
+        gEl.textContent = `IZLAZAK ${(data.gamblingVoterIds || []).length}/${data.gamblingEligible}`;
+      } else if (data.gamblingCooldownWaves > 0) {
+        gEl.textContent = `CD ${data.gamblingCooldownWaves}`;
+      } else {
+        gEl.textContent = `${(data.gamblingVoterIds || []).length}/${data.gamblingEligible}`;
+      }
+    }
+
+    if (data.gamblingMode && !state.wasGambling) {
+      mountRoulette(me ? me.currency : 0, () => {});
+    }
+    if (!data.gamblingMode && state.wasGambling) {
+      unmountRoulette();
+    }
+    state.wasGambling = !!data.gamblingMode;
+
+    if (!me.alive && state.wasAlive) {
+      // bas sad umro - kratak "You Died" flash, pa spectate preuzima
+      const overlay = document.getElementById("deathOverlay");
+      overlay.classList.add("visible");
+      clearTimeout(state.deathOverlayTimeout);
+      state.deathOverlayTimeout = setTimeout(() => overlay.classList.remove("visible"), 2000);
+    }
+    if (me.alive && !state.wasAlive) {
+      state.spectateTargetId = null; // respawn - vrati se na sopstvenu kameru
+    }
+    state.wasAlive = me.alive;
   }
 }

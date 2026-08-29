@@ -8,6 +8,7 @@
       rel="stylesheet"
     />
     <link href="style.css" rel="stylesheet" />
+    <link href="./resources/roulette.css" rel="stylesheet" />
   </head>
   <body>
     <div id="menuScreen" class="screen active">
@@ -82,11 +83,13 @@
           <div class="hud-box">SCORE <span id="hudScore">0</span></div>
           <div class="hud-box">PARE <span id="hudCurrency">0</span></div>
           <div class="hud-box">HP <span id="hudHp">100</span></div>
+          <div class="hud-box">KOCKA <span id="hudGamblingText">--</span></div>
           <div class="hud-box">TIME <span id="hudTimer">00:00:00</span></div>
           <div class="hud-box hud-ping" id="hudPing">PING <span>--</span></div>
         </div>
         <div id="adrenalineBarWrap"><div id="adrenalineBarFill"></div></div>
         <div id="leaderboard"></div>
+        <div id="spectateBanner"></div>
         <div id="toastBanner"></div>
         <div id="waveOverlay">
           <div class="death-title">wave 1</div>
@@ -116,8 +119,11 @@
           <div>WASD - Move</div>
           <div>RMB - Shoot</div>
           <div>1-4 / Scroll - Weapon</div>
-          <div>E/R/T - Medkit/Adrenalin/SPAS</div>
+          <div>Q/R/T - Medkit/Adrenalin/SPAS</div>
+           <div>E - Shop</div>
+          <div>G - Glasaj za kocku</div>
           <div>ESC - Pause</div>
+          <div>H - Prikazi/Sakrij komande</div>
         </div>
         <div id="pauseOverlay">
           <div id="pausePanel">
@@ -156,6 +162,22 @@
         <div id="actionBar">
           <div id="weaponIcons"></div>
           <div id="consumableIcons"></div>
+        </div>
+      </div>
+      <div id="gamblingOverlay"></div>
+    </div>
+
+    <div id="gameOverScreen" class="screen">
+      <div class="lobby-container">
+        <div class="lobby-header">
+          <div class="lobby-title">Kraj Igre</div>
+          <div class="room-badge">WAVE <span id="goWave">--</span></div>
+        </div>
+        <div class="player-list" id="gameOverList"></div>
+        <div class="lobby-footer">
+          <button class="btn-primary" onclick="quickGame()">Nova igra</button>
+          <button class="btn-secondary" onclick="playAgainSamePlayers()">Igraj ponovo (isti igraci)</button>
+          <button class="btn-secondary" onclick="backToMainMenu()">Glavni meni</button>
         </div>
       </div>
     </div>
