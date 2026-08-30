@@ -237,11 +237,22 @@ export function setupWebsocket(wss) {
         }
         clearTimeout(targetRoom.emptyGraceTimer);
 
-        const staleDuplicate = Object.values(targetRoom.players).find(
+         const staleDuplicate = Object.values(targetRoom.players).find(
           (existing) => existing.connected === false && existing.name === (data.name || `Player`),
         );
         if (staleDuplicate) {
-          removePlayer(staleDuplicate.id);
+          // Namerno NE pozivamo removePlayer() ovde - ona bi obrisala celu
+          // sobu ako je ovo bio poslednji preostali zapis (npr. solo test),
+          // a mi odmah ispod dodajemo novog igraca u BAS ovu sobu.
+          delete targetRoom.players[staleDuplicate.id];
+          delete playerRoom[staleDuplicate.id];
+          delete playerWs[staleDuplicate.id];
+          for (const [tokenHash, session] of resumeSessions) {
+            if (session.playerId === staleDuplicate.id) {
+              if (session.timer) clearTimeout(session.timer);
+              resumeSessions.delete(tokenHash);
+            }
+          }
         }
 
         playerId = playerIdCounter++;
