@@ -89,6 +89,8 @@ export function joinGame() {
 // sto moze izazvati kratak vizuelni "trzaj" nazad ka meniju. Bezopasno, samo kozmeticki.
 export function quickGame() {
     unmountRoulette();
+    state.intentionalClose = true;
+    sessionStorage.removeItem('zombajaResumeToken');
     const name = state.playerName;
     if (state.ws) state.ws.close();
     connect();
@@ -120,8 +122,9 @@ export function playAgainSamePlayers() {
         };
     }
 
+    sessionStorage.removeItem('zombajaResumeToken');
+
     if (!oldWs || oldWs.readyState !== 1) {
-        if (oldWs) oldWs.close();
         proceedWithRejoin();
         return;
     }
@@ -131,29 +134,25 @@ export function playAgainSamePlayers() {
     const timeoutId = setTimeout(() => {
         if (settled) return;
         settled = true;
-        oldWs.removeEventListener('message', onLeftAck);
-        oldWs.close();
         proceedWithRejoin();
     }, 1000);
 
-    function onLeftAck(event) {
-        let data;
-        try { data = JSON.parse(event.data); } catch { return; }
-        if (data.type !== 'left' || settled) return;
+    oldWs.addEventListener('close', () => {
+        if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
-        oldWs.removeEventListener('message', onLeftAck);
-        oldWs.close();
         proceedWithRejoin();
-    }
+    });
 
-    oldWs.addEventListener('message', onLeftAck);
-    sessionStorage.removeItem('zombajaResumeToken');
-    oldWs.send(JSON.stringify({ type: 'leave' }));
+    // Oznaci kao namerno zatvaranje da websocketManager-ov onclose ne pokusa
+    // svoj auto-reconnect za OVU konekciju (mi rucno vodimo rejoin).
+    state.intentionalClose = true;
+    oldWs.close();
 }
-
 export function backToMainMenu() {
     unmountRoulette();
+    state.intentionalClose = true;
+    sessionStorage.removeItem('zombajaResumeToken');
     if (state.ws) state.ws.close();
     showScreen('menuScreen');
 }
